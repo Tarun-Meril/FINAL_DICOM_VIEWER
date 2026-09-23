@@ -1,0 +1,17 @@
+{
+  "name": "pacs-dicom-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix pacs-study-browser exec -- concurrently --kill-others-on-fail \"npm --prefix \\\"pacs-study-browser\\\" run dev\" \"npm --prefix \\\"dicom ui viewer/frontend\\\" run dev\"",
+    "dev:all": "npm --prefix pacs-study-browser exec -- concurrently --kill-others-on-fail \"npm --prefix \\\"pacs-study-browser\\\" run dev\" \"npm --prefix \\\"dicom ui viewer/frontend\\\" run dev\"",
+    "dev:pacs": "npm --prefix pacs-study-browser run dev",
+    "dev:viewer": "npm --prefix \"dicom ui viewer/frontend\" run dev",
+    "dev:vr": "npm --prefix \"medview-vr\" run dev",
+    "dev:mpr": "npm --prefix \"mpr building/mpr building\" run dev",
+    "dev:electron": "npm --prefix \"dicom ui viewer/frontend\" run dev:electron"
+  },
+  "dependencies": {
+    "puppeteer": "^25.10.0"
+  }
+}

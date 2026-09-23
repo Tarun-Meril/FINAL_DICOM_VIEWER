@@ -1,0 +1,8 @@
+{
+  "name": "mpr-building-wrapper",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix \"mpr building\" run dev",
+    "build": "npm --prefix \"mpr building\" run build"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "name": "medview-pro",
+  "version": "1.0.0",
+  "description": "MedView PRO DICOM Viewer - Desktop Application Shell",
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "prepare:wasm": "node copy-vr-wasm.mjs",
+    "dev": "node copy-vr-wasm.mjs && vite",
+    "dev:renderer": "vite",
+    "dev:electron": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:5174 && electron .\"",
+    "build": "node copy-vr-wasm.mjs && tsc && vite build",
+    "preview": "vite preview",
+    "build:desktop": "cross-env ELECTRON_BUILD=true npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@cornerstonejs/codec-charls": "1.2.3",
+    "@cornerstonejs/codec-libjpeg-turbo-8bit": "1.2.2",
+    "@cornerstonejs/codec-openjpeg": "1.3.0",
+    "@cornerstonejs/codec-openjph": "2.4.7",
+    "@cornerstonejs/core": "4.17.2",
+    "@cornerstonejs/dicom-image-loader": "4.17.2",
+    "@cornerstonejs/tools": "^4.17.2",
+    "@kitware/vtk.js": "36.14.2",
+    "@types/gl-matrix": "^2.4.5",
+    "@types/seedrandom": "^3.0.8",
+    "dcmjs": "0.49.4",
+    "dicom-parser": "1.8.21",
+    "gl-matrix": "^3.4.4",
+    "lucide-react": "^1.46.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "seedrandom": "^3.0.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.2",
+    "@swc/core-win32-x64-msvc": "^1.16.2",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^24.13.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "lightningcss-win32-x64-msvc": "^1.33.0",
+    "playwright": "^1.62.1",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "^5.4.11",
+    "vite-plugin-commonjs": "^0.10.4",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.medview.pro",
+    "productName": "MedView PRO",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-linux-x64-musl": "^1.1.4"
+  }
+}

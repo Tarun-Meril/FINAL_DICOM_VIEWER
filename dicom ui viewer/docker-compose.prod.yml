@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  db-postgres:
+    image: postgres:16-alpine
+    container_name: medview_db_prod
+    environment:
+      POSTGRES_DB: medview_pro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medview_pro"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  cache-redis:
+    image: redis:7-alpine
+    container_name: medview_redis_prod
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+
+  api-backend:
+    build: ./backend
+    container_name: medview_backend_prod
+    env_file:
+      - ./backend/.env.production
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: ./backend
+    container_name: medview_celery_worker_prod
+    env_file:
+      - ./backend/.env.production
+    command: celery -A app.worker worker --loglevel=info -Q default,thumbnail_queue,ai_queue,upload_queue,export_queue
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: ./backend
+    container_name: medview_celery_beat_prod
+    env_file:
+      - ./backend/.env.production
+    command: celery -A app.worker beat --loglevel=info
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+
+  web-frontend:
+    build: ./frontend
+    container_name: medview_frontend_prod
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-backend
+
+volumes:
+  postgres_data_prod:

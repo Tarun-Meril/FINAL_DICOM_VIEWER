@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # PostgreSQL Relational Database (Annotations, Users, Sessions)
+  # -------------------------------------------------------------
+  db-postgres:
+    image: postgres:16-alpine
+    container_name: medview_db
+    environment:
+      POSTGRES_DB: medview_pro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medview_pro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Redis Cache & Celery Message Broker
+  # -------------------------------------------------------------
+  cache-redis:
+    image: redis:7-alpine
+    container_name: medview_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Orthanc PACS DICOM Server (DICOMWeb & C-STORE)
+  # -------------------------------------------------------------
+  pacs-orthanc:
+    image: jodogne/orthanc-plugins:1.12.3
+    container_name: medview_orthanc
+    ports:
+      - "8042:8042"
+      - "4242:4242"
+    environment:
+      ORTHANC_JSON: '{"Name": "MedView Orthanc Server", "DICOMWeb": {"Enable": true, "URL": "/dicom-web/"}}'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --user=orthanc --password=orthanc http://localhost:8042/system || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # FastAPI Backend API Service (Port 8000)
+  # -------------------------------------------------------------
+  api-backend:
+    build:
+      context: ./dicom ui viewer/backend
+      dockerfile: Dockerfile
+    container_name: medview_backend
+    volumes:
+      - ./dicom ui viewer/backend:/workspace
+    env_file:
+      - ./dicom ui viewer/backend/.env.production
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -------------------------------------------------------------
+  # Celery Asynchronous Task Worker
+  # -------------------------------------------------------------
+  celery-worker:
+    build:
+      context: ./dicom ui viewer/backend
+      dockerfile: Dockerfile
+    container_name: medview_celery_worker
+    volumes:
+      - ./dicom ui viewer/backend:/workspace
+    env_file:
+      - ./dicom ui viewer/backend/.env.production
+    command: celery -A app.worker worker --loglevel=info -Q default,thumbnail_queue,ai_queue,upload_queue,export_queue
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -------------------------------------------------------------
+  # Celery Beat Task Scheduler
+  # -------------------------------------------------------------
+  celery-beat:
+    build:
+      context: ./dicom ui viewer/backend
+      dockerfile: Dockerfile
+    container_name: medview_celery_beat
+    volumes:
+      - ./dicom ui viewer/backend:/workspace
+    env_file:
+      - ./dicom ui viewer/backend/.env.production
+    command: celery -A app.worker beat --loglevel=info
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # -------------------------------------------------------------
+  # MedView PRO DICOM Viewer Frontend (Port 5174 / 3000)
+  # -------------------------------------------------------------
+  web-frontend:
+    build:
+      context: ./dicom ui viewer/frontend
+      dockerfile: Dockerfile
+    container_name: medview_frontend
+    ports:
+      - "3000:80"
+      - "5174:80"
+    depends_on:
+      - api-backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#121317"/>
+  <!-- A voxel grid with a ray through it: the engine's own subject. -->
+  <g stroke="#4d9cd6" stroke-width="1.4" fill="none" opacity="0.9">
+    <path d="M8 11 L16 7 L24 11 L24 21 L16 25 L8 21 Z"/>
+    <path d="M8 11 L16 15 L24 11"/>
+    <path d="M16 15 L16 25"/>
+  </g>
+  <circle cx="16" cy="15" r="2.2" fill="#e8eaed"/>
+</svg>

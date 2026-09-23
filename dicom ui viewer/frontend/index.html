@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MerilView</title>
+    <script>
+      function showErrorOnScreen(title, details) {
+        console.error(`[${title}]`, details);
+        let container = document.getElementById('merilview-error-overlay');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'merilview-error-overlay';
+          container.style.cssText = 'color:#ff5555; padding:16px 20px; font-size:13px; font-family:monospace; z-index:999999; position:fixed; bottom:24px; right:24px; background:#1e1e1e; border:1px solid #ff4444; border-radius:8px; max-width:600px; max-height:400px; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.7);';
+          document.body ? document.body.appendChild(container) : document.documentElement.appendChild(container);
+        }
+        container.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><h3 style="margin:0; font-size:14px; font-weight:bold; color:#ff6b6b;">' + title + '</h3><button onclick="this.parentElement.parentElement.remove()" style="background:#333; border:none; color:#eee; cursor:pointer; padding:2px 8px; border-radius:4px; font-size:12px;">Dismiss</button></div><div style="line-height:1.4; word-break:break-word;">' + details + '</div>';
+      }
+      
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('[Global Error]', msg, url, lineNo, error);
+        return false;
+      };
+      
+      window.addEventListener("unhandledrejection", function(event) {
+        console.error('[Unhandled Rejection]', event.reason);
+      });
+      
+      // Catch ES module load errors (which bypass window.onerror)
+      window.addEventListener('error', function(e) {
+        if (e.target && e.target.tagName === 'SCRIPT') {
+          showErrorOnScreen('Script Load Error', '<b>Failed to load script:</b> ' + (e.target.src || "inline script: " + e.target.innerHTML));
+        }
+      }, true); // Use capture phase
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-[#1e1e1e] text-[#e5e5e5] overflow-hidden select-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

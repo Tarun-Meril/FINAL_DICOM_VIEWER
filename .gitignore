@@ -1,0 +1,76 @@
+# OHIF Viewer - excluded from this repo
+
+# Node dependencies
+node_modules/
+package-lock.json
+
+# Build and release artifacts
+dist/
+build/
+release/
+out/
+*.exe
+*.zip
+*.tar.gz
+*.tsbuildinfo
+*.timestamp-*.mjs
+
+# Python virtual environments and caches
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Local databases, caches and logs
+*.db
+*.sqlite
+*.sqlite3
+medview_pro.db
+celerybeat-schedule*
+logs/
+*.log
+
+# Local files / environment config files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+.env.development
+backend/.env
+frontend/.env
+
+# Local study storage & instance data
+/pacs-study-browser/backend/data/instances/
+/pacs-study-browser/backend/data/db.json
+/pacs-study-browser/backend/data/backups/
+/dicom ui viewer/backend/storage/
+
+# ---------------------------------------------------------------------------
+# Patient data — MUST NOT be committed.
+# These paths hold real DICOM instances. Anything committed here is
+# permanent: history rewrites do not remove it from forks or GitHub caches.
+# ---------------------------------------------------------------------------
+/pacs-study-browser/backend/data/temp/
+/pacs-study-browser/backend/data/
+**/*.dcm
+**/*.DCM
+**/*.dicom
+
+# Validation screenshot corpus (19 MB of PNGs) — regenerate with the e2e tools
+# rather than versioning them.
+/mpr building/mpr building/validation/
+
+# Captured engine logs / scratch dumps
+/dicom ui viewer/mpr_history.txt
+/dicom ui viewer/mpr_full_history.txt
+/dicom ui viewer/mpr_log.txt
+/dicom ui viewer/mpr_diff.txt
+/dicom ui viewer/frontend/test.png
+/dicom ui viewer/backend/test34.png

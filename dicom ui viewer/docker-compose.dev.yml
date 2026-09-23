@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  db-postgres:
+    image: postgres:16-alpine
+    container_name: medview_db_dev
+    environment:
+      POSTGRES_DB: medview_pro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medview_pro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cache-redis:
+    image: redis:7-alpine
+    container_name: medview_redis_dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pacs-orthanc:
+    image: jodogne/orthanc-plugins:1.12.3
+    container_name: medview_orthanc_dev
+    ports:
+      - "8042:8042"
+      - "4242:4242"
+    environment:
+      ORTHANC_JSON: '{"Name": "MedView Orthanc Server", "DICOMWeb": {"Enable": true, "URL": "/dicom-web/"}}'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --user=orthanc --password=orthanc http://localhost:8042/system || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api-backend:
+    build: ./backend
+    container_name: medview_backend_dev
+    volumes:
+      - ./backend:/workspace
+    env_file:
+      - ./backend/.env.development
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+      pacs-orthanc:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-worker:
+    build: ./backend
+    container_name: medview_celery_worker_dev
+    volumes:
+      - ./backend:/workspace
+    env_file:
+      - ./backend/.env.development
+    command: celery -A app.worker worker --loglevel=info -Q default,thumbnail_queue,ai_queue,upload_queue,export_queue
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-beat:
+    build: ./backend
+    container_name: medview_celery_beat_dev
+    volumes:
+      - ./backend:/workspace
+    env_file:
+      - ./backend/.env.development
+    command: celery -A app.worker beat --loglevel=info
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web-frontend:
+    image: node:20-alpine
+    container_name: medview_frontend_dev
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5174:5174"
+    environment:
+      - NODE_ENV=development
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1
+    env_file:
+      - ./frontend/.env.development
+    command: sh -c "find node_modules -mindepth 1 -delete 2>/dev/null || true; mv package-lock.json package-lock.json.bak 2>/dev/null || true; npm install; mv package-lock.json.bak package-lock.json 2>/dev/null || true; npm run dev:renderer -- --host"
+    depends_on:
+      - api-backend
+
+volumes:
+  postgres_data_dev:

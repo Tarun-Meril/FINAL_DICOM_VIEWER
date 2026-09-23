@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --color-titlebar-bg: var(--titlebar-bg);
+  --color-menubar-bg: var(--menubar-bg);
+  --color-dropdown-bg: var(--dropdown-bg);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-hover-bg: var(--hover-bg);
+  --color-active-bg: var(--active-bg);
+  --color-border-color: var(--border-color);
+  --color-titlebar-border: var(--titlebar-border);
+  --color-dropdown-border: var(--dropdown-border);
+}
+
+:root {
+  /* Default Dark Theme (PACS Station) */
+  --titlebar-bg: #1e1e1e;
+  --menubar-bg: #252526;
+  --dropdown-bg: #2d2d2d;
+  --text-primary: #e5e5e5;
+  --text-secondary: #d6d6d6;
+  --hover-bg: #3a3a3a;
+  --active-bg: #2d2d2d;
+  --border-color: #333333;
+  --titlebar-border: #2d2d2d;
+  --dropdown-border: #3a3a3a;
+  --window-other-hover: #2f2f2f;
+}
+
+[data-theme="light"] {
+  /* Premium Clinician Light Theme */
+  --titlebar-bg: #f3f3f3;
+  --menubar-bg: #e8e8e8;
+  --dropdown-bg: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --hover-bg: #d8d8d8;
+  --active-bg: #cdcdcd;
+  --border-color: #cccccc;
+  --titlebar-border: #dbdbdb;
+  --dropdown-border: #c0c0c0;
+  --window-other-hover: #e0e0e0;
+}
+
+/* Base resets & Electron specific utility styles */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  user-select: none;
+}
+
+/* Electron titlebar dragging */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag-region {
+  -webkit-app-region: no-drag;
+}
+
+/* Monospace fonts for numbers to prevent layout shifting */
+.font-mono-numbers {
+  font-family: 'JetBrains Mono', 'Inter', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth transitions */
+.transition-subtle {
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hide scrollbars for menus */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Print Styles for the Report */
+@media print {
+  /* Reset layout constraints to prevent 1-page cutoff */
+  html, body, #root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  /* Reset flex constraints that trap absolute elements */
+  .flex, .flex-col, .flex-1, .h-full, .overflow-y-auto, .overflow-hidden {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  /* Prevent flex-1 from creating massive empty gaps between sections in the printed report */
+  .flex-1 {
+    flex: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #print-report-container, #print-report-container * {
+    visibility: visible;
+  }
+
+  #print-report-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 15mm !important;
+    background-color: white !important;
+    color: black !important;
+    z-index: 999999 !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+  }
+  
+  .hide-on-print {
+    display: none !important;
+  }
+
+  /* Remove flex constraints for textareas so they expand if we force height */
+  textarea {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+}

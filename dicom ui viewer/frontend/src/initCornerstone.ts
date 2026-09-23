@@ -1,0 +1,472 @@
+import './vtkPolyfill';
+import * as cornerstoneCore from '@cornerstonejs/core';
+import { init as initCore, volumeLoader, cornerstoneStreamingImageVolumeLoader, metaData, RenderingEngine, getRenderingEngine, Enums } from '@cornerstonejs/core';
+import {
+  init as initTools,
+  addTool,
+  PanTool,
+  ZoomTool,
+  WindowLevelTool,
+  StackScrollTool,
+  LengthTool,
+  AngleTool,
+  CobbAngleTool,
+  EllipticalROITool,
+  RectangleROITool,
+  ProbeTool,
+  BidirectionalTool,
+  ArrowAnnotateTool,
+  CrosshairsTool,
+  TrackballRotateTool,
+  PlanarFreehandROITool,
+  ReferenceLinesTool,
+} from '@cornerstonejs/tools';
+import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
+import dicomParser from 'dicom-parser';
+import { API_BASE_URL } from './config';
+import DecodeWorker from '../node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js?worker';
+
+if (typeof window !== 'undefined') {
+  (window as any).cornerstone = cornerstoneCore;
+  (window as any).dicomParser = dicomParser;
+  (window as any).cornerstoneDICOMImageLoader = dicomImageLoader;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH: Fix Cornerstone3D 1.x CrosshairsTool mouseMoveCallback crash
+// when filteredToolAnnotations is undefined during volume loading.
+// ─────────────────────────────────────────────────────────────────────────────
+class SafeCrosshairsTool extends CrosshairsTool {
+  constructor(toolProps: any, defaultToolProps: any) {
+    super(toolProps, defaultToolProps);
+    const orig = this.mouseMoveCallback;
+    if (orig) {
+      this.mouseMoveCallback = (evt: any, filteredToolAnnotations: any) => {
+        if (!filteredToolAnnotations) {
+          filteredToolAnnotations = [];
+        }
+        return orig.call(this, evt, filteredToolAnnotations);
+      };
+    }
+  }
+}
+(SafeCrosshairsTool as any).toolName = 'Crosshairs';
+
+import vtkOpenGLRenderWindow from '@kitware/vtk.js/Rendering/OpenGL/RenderWindow';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH: Fix VTK.js RenderWindow missing getWebgl2() called by Cornerstone3D
+// vtkStreamingOpenGLVolumeMapper (avoids "model._openGLRenderWindow.getWebgl2 is not a function")
+// ─────────────────────────────────────────────────────────────────────────────
+if (vtkOpenGLRenderWindow && (vtkOpenGLRenderWindow as any).extend) {
+  const origExtend = (vtkOpenGLRenderWindow as any).extend;
+  (vtkOpenGLRenderWindow as any).extend = function(publicAPI: any, model: any, initialValues: any = {}) {
+    origExtend(publicAPI, model, initialValues);
+    if (!publicAPI.getWebgl2) {
+      publicAPI.getWebgl2 = () => {
+        const gl = publicAPI.get3DContext ? publicAPI.get3DContext() : model.context;
+        return typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+      };
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metadata Store
+// Per-imageId metadata written by addInstanceMetadata() during volume build.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const metadataStore = new Map<string, any>();
+
+export function addInstanceMetadata(imageId: string, data: any) {
+  if (!imageId || !data) return;
+  metadataStore.set(imageId, data);
+  if (!imageId.startsWith('cornerstoneStreamingImageVolume:')) {
+    metadataStore.set(`cornerstoneStreamingImageVolume:${imageId}`, data);
+  } else {
+    const stripped = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+    metadataStore.set(stripped, data);
+  }
+}
+
+function customMetaDataProvider(type: string, imageId: string): any {
+  if (!imageId) return undefined;
+  let data = metadataStore.get(imageId);
+  if (!data) {
+    const stripped = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+    data = metadataStore.get(stripped);
+  }
+  if (!data) {
+    data = metadataStore.get(`cornerstoneStreamingImageVolume:${imageId}`);
+  }
+  if (!data) return undefined;
+
+  // ── imagePlaneModule ────────────────────────────────────────────────────────
+  if (type === 'imagePlaneModule') {
+    const iop = data.imageOrientationPatient || data.image_orientation || [1, 0, 0, 0, 1, 0];
+    const ipp = data.imagePositionPatient || data.image_position || [0, 0, 0];
+    const ps = data.pixelSpacing || data.pixel_spacing || [1.0, 1.0];
+    const st = Number(data.sliceThickness || data.slice_thickness || 1.0);
+
+    const forUID =
+      data.frameOfReferenceUID ||
+      data.frame_of_reference_uid ||
+      data.seriesInstanceUID ||
+      data.series_instance_uid ||
+      `synthetic-for-${imageId.substring(0, 30)}`;
+
+    const rowCosines = [Number(iop[0]), Number(iop[1]), Number(iop[2])];
+    const columnCosines = [Number(iop[3]), Number(iop[4]), Number(iop[5])];
+
+    const spacingBetweenSlices = Number(
+      data.spacingBetweenSlices || data.spacing_between_slices || st
+    );
+
+    return {
+      imageOrientationPatient: iop,
+      imagePositionPatient: ipp,
+      rowCosines,
+      columnCosines,
+      pixelSpacing: ps,
+      columnPixelSpacing: Number(ps[1]),
+      rowPixelSpacing: Number(ps[0]),
+      frameOfReferenceUID: forUID,
+      columns: Number(data.columns || data.Columns || 512),
+      rows: Number(data.rows || data.Rows || 512),
+      sliceThickness: st,
+      spacingBetweenSlices,
+    };
+  }
+
+  // ── imagePixelModule ────────────────────────────────────────────────────────
+  if (type === 'imagePixelModule') {
+    const bitsAllocated = Number(data.bits_allocated || data.bitsAllocated || 16);
+    const bitsStored = Number(data.bits_stored || data.bitsStored || 16);
+    const highBit = Number(data.high_bit || data.highBit || bitsStored - 1);
+    const samplesPerPixel = Number(data.samples_per_pixel || data.samplesPerPixel || 1);
+    const photometric = data.photometric_interpretation || data.photometricInterpretation || 'MONOCHROME2';
+    const pixelRep = Number(data.pixel_representation ?? data.pixelRepresentation ?? 0);
+
+    return {
+      bitsAllocated,
+      bitsStored,
+      highBit,
+      pixelRepresentation: pixelRep,
+      samplesPerPixel,
+      photometricInterpretation: photometric,
+      rows: Number(data.rows || data.Rows || 512),
+      columns: Number(data.columns || data.Columns || 512),
+    };
+  }
+
+  // ── modalityLUTModule ───────────────────────────────────────────────────────
+  if (type === 'modalityLUTModule') {
+    return {
+      rescaleIntercept: Number(data.rescaleIntercept ?? data.rescale_intercept ?? 0),
+      rescaleSlope: Number(data.rescaleSlope ?? data.rescale_slope ?? 1),
+      rescaleType: (data.modality || data.Modality) === 'CT' ? 'HU' : 'US',
+    };
+  }
+
+  // ── voiLutModule ─────────────────────────────────────────────────────────────
+  if (type === 'voiLutModule') {
+    const modality = data.modality || data.Modality || 'MR';
+    const defaultWC = modality === 'CT' ? 40 : 400;
+    const defaultWW = modality === 'CT' ? 400 : 800;
+
+    const parseWindow = (val: any, def: number) => {
+      if (val == null) return def;
+      if (Array.isArray(val)) return Number(val[0]) || def;
+      if (typeof val === 'string') return Number(val.split('\\')[0]) || def;
+      return Number(val) || def;
+    };
+
+    const wc = parseWindow(data.windowCenter ?? data.window_center, defaultWC);
+    const ww = parseWindow(data.windowWidth ?? data.window_width, defaultWW);
+
+    return {
+      windowCenter: [wc],
+      windowWidth: [ww],
+    };
+  }
+
+  // ── generalSeriesModule ─────────────────────────────────────────────────────
+  if (type === 'generalSeriesModule') {
+    const modality = data.modality || data.Modality || 'MR';
+    const seriesUID =
+      data.seriesInstanceUID ||
+      data.series_instance_uid ||
+      data.seriesInstanceUid ||
+      '1.2.840.10008.1.1';
+
+    return {
+      modality,
+      seriesInstanceUID: seriesUID,
+    };
+  }
+
+  // ── generalStudyModule ──────────────────────────────────────────────────────
+  if (type === 'generalStudyModule') {
+    const studyUID =
+      data.studyInstanceUID ||
+      data.study_instance_uid ||
+      data.studyInstanceUid ||
+      '1.2.840.10008.1.2';
+
+    return { studyInstanceUID: studyUID };
+  }
+
+  return undefined;
+}
+
+async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
+  try {
+    const meta = metadataStore.get(imageId) || {};
+    const pngUrl = `${API_BASE_URL}/api/instances/${sopUid}/png`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    let response;
+    try {
+      response = await fetch(pngUrl, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch PNG frame from server: ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const imageBitmap = await createImageBitmap(blob);
+
+  const canvas = document.createElement('canvas');
+  const width = imageBitmap.width;
+  const height = imageBitmap.height;
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Failed to get 2d context for fallback frame');
+  ctx.drawImage(imageBitmap, 0, 0);
+  const imgData = ctx.getImageData(0, 0, width, height);
+
+  const pixels16 = new Uint16Array(width * height);
+  let minPixelValue = 65535;
+  let maxPixelValue = 0;
+
+  for (let i = 0; i < width * height; i++) {
+    const val = imgData.data[i * 4] * 16;
+    pixels16[i] = val;
+    if (val < minPixelValue) minPixelValue = val;
+    if (val > maxPixelValue) maxPixelValue = val;
+  }
+
+  const ps = meta.pixelSpacing || meta.pixel_spacing || [1, 1];
+  const modality = meta.modality || meta.Modality || 'MR';
+  const wc = Number(meta.windowCenter ?? meta.window_center ?? (modality === 'CT' ? 40 : 400));
+  const ww = Number(meta.windowWidth ?? meta.window_width ?? (modality === 'CT' ? 400 : 800));
+
+  let voxelManager: any;
+  if ((cornerstoneCore as any).utilities?.VoxelManager?.createImageVoxelManager) {
+    voxelManager = (cornerstoneCore as any).utilities.VoxelManager.createImageVoxelManager({
+      dimensions: [width, height, 1],
+      scalarData: pixels16,
+    });
+  } else {
+    voxelManager = {
+      getScalarData: () => pixels16,
+      getScalarDataLength: () => pixels16.length,
+      getVoxel: (index: number) => pixels16[index],
+      setVoxel: (index: number, val: number) => { pixels16[index] = val; },
+      getVoxelAtMatIndex: (x: number, y: number, _z: number) => pixels16[y * width + x],
+      setVoxelAtMatIndex: (x: number, y: number, _z: number, val: number) => { pixels16[y * width + x] = val; },
+      getBounds: () => [0, width - 1, 0, height - 1, 0, 0],
+      getDimensions: () => [width, height, 1],
+      getConstructor: () => Uint16Array,
+      _getConstructor: () => Uint16Array,
+      getMiddleSliceData: () => ({ scalarData: pixels16 }),
+    };
+  }
+
+  return {
+    imageId,
+    minPixelValue: 0,
+    maxPixelValue: 4095,
+    slope: 1, // Ignore original slope since backend already applied it
+    intercept: 0, // Ignore original intercept since backend already applied it
+    windowCenter: 2040, // Middle of 0-4080 range
+    windowWidth: 4080, // Full width of 0-4080 range
+    getPixelData: () => pixels16,
+    rows: height,
+    columns: width,
+    height,
+    width,
+    color: false,
+    columnPixelSpacing: Number(ps[0]),
+    rowPixelSpacing: Number(ps[1]),
+    sizeInBytes: pixels16.byteLength,
+    numberOfComponents: 1,
+  };
+  } catch (err) {
+    console.error(`[Cornerstone3D] loadServerPixelFrameImage completely failed for ${sopUid}:`, err);
+    // Return a dummy 256x256 image so it doesn't crash the entire viewer with unhandled rejection
+    const width = 256;
+    const height = 256;
+    const pixels16 = new Uint16Array(width * height);
+    return {
+      imageId,
+      minPixelValue: 0,
+      maxPixelValue: 0,
+      slope: 1.0,
+      intercept: 0,
+      windowCenter: 2040,
+      windowWidth: 4080,
+      getPixelData: () => pixels16,
+      rows: height,
+      columns: width,
+      height,
+      width,
+      color: false,
+      columnPixelSpacing: 1,
+      rowPixelSpacing: 1,
+      sizeInBytes: pixels16.byteLength,
+      numberOfComponents: 1,
+    };
+  }
+}
+
+function wadoImageLoaderWithFallback(imageId: string, options: any) {
+  const sopMatch = imageId.match(/\/instances\/([^\/]+)\/file/);
+  const sopUid = sopMatch ? sopMatch[1] : null;
+
+  console.log(`[ImageLoader] Requesting imageId: ${imageId}`);
+
+  try {
+    const res = dicomImageLoader.wadouri.loadImage(imageId, options);
+    if (res && res.promise) {
+      return {
+        promise: res.promise.then((image: any) => {
+          if (sopUid) console.log(`[ImageLoader] Successfully loaded DICOM for ${sopUid}`);
+          return image;
+        }).catch((err: any) => {
+          if (sopUid) {
+            console.warn(`[Cornerstone3D] Direct WADO-URI DICOM load failed for ${sopUid}, trying PNG fallback:`, err);
+            return loadServerPixelFrameImage(imageId, sopUid);
+          }
+          throw err;
+        }),
+        cancelFn: res.cancelFn || (() => { }),
+      };
+    }
+  } catch (err) {
+    if (sopUid) {
+      console.warn(`[Cornerstone3D] Synchronous error for ${sopUid}, falling back to PNG:`, err);
+      return {
+        promise: loadServerPixelFrameImage(imageId, sopUid),
+        cancelFn: () => { },
+      };
+    }
+  }
+
+  return dicomImageLoader.wadouri.loadImage(imageId, options);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Init
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Guard against repeat initialisation.
+ *
+ * This function registers a custom JPEG 2000 decode worker with
+ * `{ overwrite: true }` and installs the wadouri/dicomfile/wadors image
+ * loaders. Running it twice re-registers all of that, and a second
+ * `dicomImageLoader.init()` discards the decode worker registered by the
+ * first — which breaks JPEG 2000 decoding and renders every image flat grey.
+ *
+ * Callers (app bootstrap, the standalone /mpr route, the MPR engine) can now
+ * all await this safely; the work happens exactly once.
+ */
+let csInitPromise: Promise<void> | null = null;
+
+export async function initCornerstone(): Promise<void> {
+  if (csInitPromise) return csInitPromise;
+  csInitPromise = initCornerstoneOnce();
+  return csInitPromise;
+}
+
+async function initCornerstoneOnce() {
+  await initCore({
+    rendering: {
+      // 16-bit textures. `true` here selects 8-bit textures, which quantise a
+      // CT volume spanning ~2350 HU to 256 levels — about 9 HU per level. A
+      // soft-tissue window (W350) then has roughly 38 grey levels instead of
+      // 350, so organs that differ by a few HU become indistinguishable. That
+      // is diagnostically unusable for abdominal CT, which is what this viewer
+      // reads, so accuracy wins over texture memory.
+      preferSizeOverAccuracy: false,
+      useNorm16Texture: true,
+      useCPURendering: false,
+      strictZSpacingForVolumeViewport: false,
+      renderingEngineMode: Enums.RenderingEngineModeEnum.ContextPool,
+      webGlContextCount: 3,
+    } as any
+  });
+  await initTools();
+
+  addTool(PanTool);
+  addTool(ZoomTool);
+  addTool(WindowLevelTool);
+  addTool(StackScrollTool);
+  addTool(LengthTool);
+  addTool(AngleTool);
+  addTool(CobbAngleTool);
+  addTool(EllipticalROITool);
+  addTool(RectangleROITool);
+  addTool(ProbeTool);
+  addTool(BidirectionalTool);
+  addTool(ArrowAnnotateTool);
+  addTool(SafeCrosshairsTool);
+  addTool(ReferenceLinesTool);
+  addTool(TrackballRotateTool);
+  addTool(PlanarFreehandROITool);
+
+  metaData.addProvider(customMetaDataProvider, 9999);
+
+  volumeLoader.registerUnknownVolumeLoader(cornerstoneStreamingImageVolumeLoader as any);
+  volumeLoader.registerVolumeLoader('cornerstoneStreamingImageVolume', cornerstoneStreamingImageVolumeLoader as any);
+
+  if (dicomImageLoader.external) {
+    dicomImageLoader.external.cornerstone = cornerstoneCore;
+    dicomImageLoader.external.dicomParser = dicomParser;
+  }
+
+  dicomImageLoader.init({
+    maxWebWorkers: Math.min(Math.max((navigator.hardwareConcurrency || 4) - 1, 1), 4),
+    startWebWorkersOnDemand: false,
+  });
+
+  const workerManager = cornerstoneCore.getWebWorkerManager();
+  workerManager.registerWorker('dicomImageLoader', () => new DecodeWorker(), {
+    overwrite: true,
+    maxWorkerInstances: Math.min(Math.max((navigator.hardwareConcurrency || 4) - 1, 1), 4)
+  });
+
+  cornerstoneCore.imageLoader.registerImageLoader('wadouri', wadoImageLoaderWithFallback as any);
+  cornerstoneCore.imageLoader.registerImageLoader('dicomfile', wadoImageLoaderWithFallback as any);
+  cornerstoneCore.imageLoader.registerImageLoader('wadors', wadoImageLoaderWithFallback as any);
+
+  // Delegate the custom streaming volume scheme to the exact same loader
+  cornerstoneCore.imageLoader.registerImageLoader('cornerstoneStreamingImageVolume', (imageId: string, options: any) => {
+    const strippedId = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+    return wadoImageLoaderWithFallback(strippedId, options);
+  });
+
+  const RENDERING_ENGINE_ID = 'medview-rendering-engine';
+  if (!getRenderingEngine(RENDERING_ENGINE_ID)) {
+    new RenderingEngine(RENDERING_ENGINE_ID);
+  }
+
+  console.log('[Cornerstone3D] Initialization complete. generalSeriesModule metadata provider destructuring safe.');
+}

@@ -1,0 +1,364 @@
+/* MerilView PRO — diagnostic reading environment.
+   Dark, low-distraction, high contrast. Nothing decorative competes with the
+   image; every control is a clinical term, not an icon puzzle. */
+
+:root {
+  --bg: #000000;
+  --chrome: #14171a;
+  --chrome-raised: #1d2126;
+  --border: #2b3138;
+  --border-strong: #3c444d;
+  --text: #d7dde3;
+  --text-dim: #8b959f;
+  --accent: #4da3ff;
+  --accent-dim: #1b4f85;
+  --warn: #f0a52a;
+  --error: #ff5f56;
+  --ok: #5fd08a;
+
+  --axial: #ffd400;
+  --coronal: #37d67a;
+  --sagittal: #ff6b6b;
+
+  --font-ui: "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+  --font-data: "Roboto Mono", "Consolas", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--chrome-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) { border-color: var(--border-strong); background: #262b32; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+button.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--chrome-raised);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+button.toggle-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+button.toggle-btn .toggle-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #444c56;
+  display: inline-block;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+button.toggle-btn.active {
+  background: rgba(77, 163, 255, 0.14);
+  border-color: rgba(77, 163, 255, 0.45);
+  color: #e6edf3;
+}
+button.toggle-btn.active .toggle-indicator {
+  background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
+}
+
+.toolbar .tool-group {
+  background: #0f1215;
+  padding: 2px;
+  border-radius: 4px;
+  gap: 2px;
+  border: 1px solid var(--border);
+}
+button.tool-btn {
+  padding: 4px 9px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 2px;
+}
+button.tool-btn:hover:not(:disabled) {
+  background: var(--chrome-raised);
+  border-color: var(--border);
+}
+button.tool-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0f14;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+select, input[type="number"] {
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: var(--chrome-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar .group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid var(--border);
+}
+.toolbar .group:last-child { border-right: none; }
+
+.toolbar .brand {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin-right: 10px;
+}
+.toolbar .brand small { color: var(--text-dim); font-weight: 400; }
+
+.toolbar .spacer { flex: 1; }
+
+.active-tool {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 3px;
+  padding: 3px 8px;
+}
+
+.workspace {
+  position: relative; /* containing block for the notice and diagnostics panel */
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  background: var(--border);
+  min-height: 0;
+}
+.workspace.primaryAxial {
+  grid-template-areas: "axial axial" "coronal sagittal";
+  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+.workspace.threeUp {
+  grid-template-areas: "axial coronal sagittal";
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.workspace.grid {
+  grid-template-areas: "axial coronal" "sagittal info";
+  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+.workspace.single { grid-template-areas: "one"; }
+
+.panel { position: relative; background: #000; min-width: 0; min-height: 0; overflow: hidden; }
+.panel.axial { grid-area: axial; }
+.panel.coronal { grid-area: coronal; }
+.panel.sagittal { grid-area: sagittal; }
+.workspace.single .panel { grid-area: one; }
+
+.panel .viewport { position: absolute; inset: 0; }
+.panel .viewport div.viewport-element { width: 100%; height: 100%; }
+.panel canvas.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.panel .focus-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid transparent;
+}
+.panel.focused .focus-ring { border-color: var(--accent); }
+
+/* Cursor feedback per active tool */
+.panel.tool-crosshair { cursor: crosshair; }
+.panel.tool-zoom { cursor: zoom-in; }
+.panel.tool-pan { cursor: grab; }
+.panel.tool-pan:active { cursor: grabbing; }
+.panel.tool-windowLevel { cursor: ew-resize; }
+.panel.tool-length,
+.panel.tool-angle,
+.panel.tool-rectangleRoi,
+.panel.tool-ellipseRoi,
+.panel.tool-probe { cursor: crosshair; }
+
+/* ------------------------------------------------------------ annotations */
+
+.annotations { position: absolute; inset: 0; pointer-events: none; font-family: var(--font-data); font-size: 11px; line-height: 1.45; }
+.annotations .corner { position: absolute; padding: 6px 8px; text-shadow: 0 0 4px #000; }
+.annotations .tl { top: 0; left: 0; }
+.annotations .tr { top: 0; right: 0; text-align: right; }
+.annotations .bl { bottom: 0; left: 0; }
+.annotations .br { bottom: 0; right: 0; text-align: right; }
+.annotations .dim { color: var(--text-dim); }
+.annotations .plane-tag { font-weight: 600; letter-spacing: 0.08em; }
+.annotations .plane-tag.axial { color: var(--axial); }
+.annotations .plane-tag.coronal { color: var(--coronal); }
+.annotations .plane-tag.sagittal { color: var(--sagittal); }
+
+.orientation-marker {
+  position: absolute;
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: 0 0 4px #000;
+  pointer-events: none;
+}
+.orientation-marker.top { top: 4px; left: 50%; transform: translateX(-50%); }
+.orientation-marker.bottom { bottom: 4px; left: 50%; transform: translateX(-50%); }
+.orientation-marker.left { left: 6px; top: 50%; transform: translateY(-50%); }
+.orientation-marker.right { right: 6px; top: 50%; transform: translateY(-50%); }
+
+/* ---------------------------------------------------------------- notices */
+
+.notice {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 560px;
+  background: var(--chrome-raised);
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  padding: 18px 22px;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  z-index: 20;
+}
+.notice h3 { margin: 0 0 10px; font-size: 14px; color: var(--error); }
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  background: #2a2110;
+  border-bottom: 1px solid var(--warn);
+  color: #f2d9a8;
+}
+.banner.error { background: #2a1414; border-bottom-color: var(--error); color: #f4b8b4; }
+.banner .code { font-family: var(--font-data); color: var(--text-dim); }
+.banner button { margin-left: auto; }
+
+/* ----------------------------------------------------------- debug panel */
+
+.debug-panel {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 380px;
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  background: rgba(20, 23, 26, 0.96);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.5;
+  z-index: 30;
+  user-select: text;
+}
+.debug-panel h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; color: var(--accent); }
+.debug-panel table { width: 100%; border-collapse: collapse; }
+.debug-panel td { padding: 1px 0; vertical-align: top; }
+.debug-panel td:first-child { color: var(--text-dim); padding-right: 10px; white-space: nowrap; }
+.debug-panel .issue { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--border-strong); }
+.debug-panel .issue.error { border-left-color: var(--error); }
+.debug-panel .issue.warning { border-left-color: var(--warn); }
+.debug-panel .issue.info { border-left-color: var(--accent-dim); }
+
+/* -------------------------------------------------------------- loading */
+
+.startup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-dim);
+}
+.startup .title { font-size: 20px; letter-spacing: 0.1em; color: var(--text); }
+.startup .hint { max-width: 520px; text-align: center; line-height: 1.6; }
+.startup label.file {
+  padding: 9px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: #fff;
+  background: var(--accent-dim);
+  cursor: pointer;
+}
+.startup input[type="file"] { display: none; }
+
+.progress { width: 320px; height: 3px; background: var(--chrome-raised); border-radius: 2px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 120ms linear; }
+
+.series-list { display: flex; flex-direction: column; gap: 6px; width: 560px; max-height: 300px; overflow: auto; }
+.series-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--chrome);
+  cursor: pointer;
+  text-align: left;
+}
+.series-row:hover { border-color: var(--accent); }
+.series-row .meta { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+
+/* Non-maximised viewports stay mounted and correctly sized in single layout,
+   so returning to the three-panel view needs no re-fit and the reference point
+   is preserved exactly. */
+.panel.hidden { visibility: hidden; pointer-events: none; }
+.dim { color: var(--text-dim); }
