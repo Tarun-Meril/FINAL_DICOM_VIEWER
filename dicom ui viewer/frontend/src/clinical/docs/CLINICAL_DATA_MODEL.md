@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise Clinical Data Model, Workflow Orchestration & Interoperability Foundation (Phase 22.5)
+# MerilView — Enterprise Clinical Data Model, Workflow Orchestration & Interoperability Foundation (Phase 22.5)
 
 ## Overview
 Phase 22.5 introduces the shared Clinical Data Model, Workflow State Engine, Longitudinal Lesion Tracking, Finding Repository, Patient Timelines, and DICOM SR/Metadata Interoperability layer in `frontend/src/clinical/`.

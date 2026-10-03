@@ -1,6 +1,6 @@
-# MedView PRO DICOM Viewer - Backend API Service
+# MerilView DICOM Viewer - Backend API Service
 
-This is the dedicated backend service for the **MedView PRO Diagnostic Workstation**. It is built using Python 3.12+ and FastAPI, designed using Clean Architecture principles, and decouples the viewer frontend from the database and PACS archive servers.
+This is the dedicated backend service for the **MerilView Diagnostic Workstation**. It is built using Python 3.12+ and FastAPI, designed using Clean Architecture principles, and decouples the viewer frontend from the database and PACS archive servers.
 
 ---
 

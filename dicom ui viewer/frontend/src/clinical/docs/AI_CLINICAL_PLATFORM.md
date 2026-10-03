@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise AI Clinical Platform & Intelligent Diagnostic Assistance (Phase 24)
+# MerilView — Enterprise AI Clinical Platform & Intelligent Diagnostic Assistance (Phase 24)
 
 ## Overview
 Phase 24 transforms the completed AI Infrastructure into production-ready AI clinical applications covering AI Organ/Tumor Segmentation, Lesion Detection (Lung Nodule, Brain Hemorrhage, Fracture, Liver Lesion, Colon Polyp), Automatic RECIST Quantification, Worklist Triage Prioritization, Draft Report Generation, and Vision-Language Multimodal reasoning in `frontend/src/clinical/ai/applications/`.

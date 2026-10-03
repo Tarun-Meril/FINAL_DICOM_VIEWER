@@ -17,7 +17,7 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[MedView PRO] React ErrorBoundary caught:', error, errorInfo);
+    console.error('[MerilView] React ErrorBoundary caught:', error, errorInfo);
   }
 
   render() {
@@ -30,7 +30,7 @@ class ErrorBoundary extends React.Component<
         }}>
           <div style={{ fontSize: '2rem' }}>⚠️</div>
           <div style={{ fontSize: '1.1rem', color: '#f87171', fontWeight: 'bold' }}>
-            MedView PRO — Render Error
+            MerilView — Render Error
           </div>
           <div style={{
             background: '#131317', border: '1px solid #3f3f46', borderRadius: '8px',
@@ -68,6 +68,17 @@ function isStandaloneMPRRoute(): boolean {
   return pathname === '/mpr' || pathname.startsWith('/mpr/') || pathname.startsWith('/mpr?');
 }
 
+let appRoot: ReactDOM.Root | null = (window as any).__merilview_react_root || null;
+
+function renderApp(node: React.ReactNode) {
+  const container = document.getElementById('root')!;
+  if (!appRoot) {
+    appRoot = ReactDOM.createRoot(container);
+    (window as any).__merilview_react_root = appRoot;
+  }
+  appRoot.render(node);
+}
+
 // Dynamically import App to isolate module-level errors in cornerstone/vtk.js
 // from preventing React from mounting entirely
 async function bootstrap() {
@@ -76,7 +87,7 @@ async function bootstrap() {
       // VR renders with VTK.js and its own DICOM ingest; it does not need the
       // Cornerstone engine, so nothing is initialised here.
       const { default: StandaloneVRPage } = await import('./components/vr/StandaloneVRPage');
-      ReactDOM.createRoot(document.getElementById('root')!).render(
+      renderApp(
         <ErrorBoundary>
           <StandaloneVRPage />
         </ErrorBoundary>
@@ -86,7 +97,7 @@ async function bootstrap() {
 
     if (isStandaloneMPRRoute()) {
       const { default: StandaloneMPRPage } = await import('./components/mpr/StandaloneMPRPage');
-      ReactDOM.createRoot(document.getElementById('root')!).render(
+      renderApp(
         <ErrorBoundary>
           <StandaloneMPRPage />
         </ErrorBoundary>
@@ -94,13 +105,13 @@ async function bootstrap() {
       return;
     }
 
-    // Dynamically import App (which transitively imports clinical, cornerstone, etc.)
-    const { default: App } = await import('./App');
+    // Dynamically import UnifiedApp (which bundles PACS Study Browser and DICOM Viewer)
+    const { default: UnifiedApp } = await import('./UnifiedApp');
 
     // Render React App
-    ReactDOM.createRoot(document.getElementById('root')!).render(
+    renderApp(
       <ErrorBoundary>
-        <App />
+        <UnifiedApp />
       </ErrorBoundary>
     );
 
@@ -109,17 +120,17 @@ async function bootstrap() {
       const { initCornerstone } = await import('./initCornerstone');
       await initCornerstone();
     } catch (err) {
-      console.error("[MedView PRO] Cornerstone3D initialization warning:", err);
+      console.error("[MerilView] Cornerstone3D initialization warning:", err);
     }
   } catch (err: any) {
-    console.error('[MedView PRO] Fatal bootstrap error:', err);
+    console.error('[MerilView] Fatal bootstrap error:', err);
     // Show error directly on page since React may not be mounted
     const root = document.getElementById('root');
     if (root) {
       root.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#070708;color:#e5e5e5;font-family:monospace;padding:2rem;gap:1rem">
           <div style="font-size:2rem">⚠️</div>
-          <div style="font-size:1.1rem;color:#f87171;font-weight:bold">MedView PRO — Bootstrap Error</div>
+          <div style="font-size:1.1rem;color:#f87171;font-weight:bold">MerilView — Bootstrap Error</div>
           <div style="background:#131317;border:1px solid #3f3f46;border-radius:8px;padding:1rem;max-width:700px;width:100%;font-size:0.75rem;color:#a3e635;white-space:pre-wrap;word-break:break-all">${err.message}\n\n${err.stack || ''}</div>
           <button onclick="window.location.reload()" style="margin-top:1rem;padding:0.5rem 1.5rem;background:#4f46e5;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem">Reload Page</button>
         </div>
@@ -130,3 +141,8 @@ async function bootstrap() {
 
 bootstrap();
 
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    window.location.reload();
+  });
+}

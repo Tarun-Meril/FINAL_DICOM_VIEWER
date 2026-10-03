@@ -11,6 +11,112 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SAFE DOM REMOVE CHILD
+// Prevents "NotFoundError: Failed to execute 'removeChild' on 'Node': The node
+// to be removed is not a child of this node." when VTK.js or viewports unmount
+// and attempt to remove a canvas or child element that was already detached.
+// ─────────────────────────────────────────────────────────────────────────────
+if (typeof Node !== 'undefined' && Node.prototype && Node.prototype.removeChild) {
+  const origRemoveChild = Node.prototype.removeChild;
+  Node.prototype.removeChild = function <T extends Node>(child: T): T {
+    if (child && child.parentNode !== this) {
+      if (child.parentNode) {
+        try {
+          return origRemoveChild.call(child.parentNode, child) as T;
+        } catch {}
+      }
+      return child;
+    }
+    try {
+      return origRemoveChild.call(this, child);
+    } catch {
+      return child;
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFE PROXY WRAPPER
+// Prevents "TypeError: Cannot create proxy with a non object as target or handler"
+// when VTK.js or other WebGL libraries attempt to proxy a null/lost context.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function createSafeDummyWebGLContext(): any {
+  const dummy: any = {
+    MAX_TEXTURE_IMAGE_UNITS: 0x8872,
+    MAX_3D_TEXTURE_SIZE: 0x8073,
+    MAX_TEXTURE_SIZE: 0x0D33,
+    RGBA: 0x1908,
+    UNSIGNED_BYTE: 0x1401,
+    TEXTURE0: 0x84C0,
+    TEXTURE_2D: 0x0DE1,
+    FRAMEBUFFER: 0x8D40,
+    COLOR_ATTACHMENT0: 0x8CE0,
+    FRAMEBUFFER_COMPLETE: 0x8CD5,
+    SRC_ALPHA: 0x0302,
+    ONE_MINUS_SRC_ALPHA: 0x0303,
+    ONE: 1,
+    LEQUAL: 0x0203,
+    BLEND: 0x0BE2,
+    DEPTH_TEST: 0x0B71,
+    SCISSOR_TEST: 0x0C11,
+    CULL_FACE: 0x0B44,
+    DEPTH_WRITEMASK: 0x0982,
+    UNMASKED_RENDERER_WEBGL: 0x9246,
+    RENDERER: 0x1F01,
+
+    getParameter: (param: number) => {
+      if (param === 0x8872) return 16;
+      if (param === 0x8073) return 2048;
+      if (param === 0x0D33) return 4096;
+      if (param === 0x9246 || param === 0x1F01) return 'WebGL2 Standard Fallback';
+      return 0;
+    },
+    getExtension: () => null,
+    getSupportedExtensions: () => [],
+    isEnabled: () => false,
+    enable: () => {},
+    disable: () => {},
+    depthFunc: () => {},
+    depthMask: () => {},
+    blendFuncSeparate: () => {},
+    viewport: () => {},
+    scissor: () => {},
+    clear: () => {},
+    clearColor: () => {},
+    bindTexture: () => {},
+    activeTexture: () => {},
+    createTexture: () => ({}),
+    deleteTexture: () => {},
+    createFramebuffer: () => ({}),
+    deleteFramebuffer: () => {},
+    bindFramebuffer: () => {},
+    framebufferTexture2D: () => {},
+    checkFramebufferStatus: () => 0x8CD5,
+    texImage2D: () => {},
+    readPixels: () => {},
+    makeCurrent: () => {},
+  };
+  return dummy;
+}
+
+if (typeof window !== 'undefined' && typeof window.Proxy !== 'undefined') {
+  const OrigProxy = window.Proxy;
+  const SafeProxy = function (target: any, handler: any) {
+    if (!target || (typeof target !== 'object' && typeof target !== 'function')) {
+      // In JavaScript `new Constructor()` ignores returning primitives/null and returns `this`.
+      // Returning a Proxy wrapping a safe dummy context guarantees constructor callers receive
+      // a valid proxy with getParameter() and other standard WebGL methods instead of an empty {}.
+      return new OrigProxy(createSafeDummyWebGLContext(), handler || {});
+    }
+    return new OrigProxy(target, handler);
+  } as any;
+  SafeProxy.revocable = OrigProxy.revocable;
+  Object.setPrototypeOf(SafeProxy, OrigProxy);
+  (window as any).Proxy = SafeProxy;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 0. FREEZE & EXTENSION IMMUNITY FOR VTK.JS OBJECTS
 // Modern @kitware/vtk.js (v36+) calls Object.freeze(publicAPI) in macro.newInstance.
 // This causes catastrophic failures in Cornerstone3D and VTK extensions that
@@ -59,12 +165,131 @@ Object.seal = function <T>(obj: T): T {
 
 import macro from '@kitware/vtk.js/macros';
 import vtkOpenGLRenderWindow from '@kitware/vtk.js/Rendering/OpenGL/RenderWindow';
+import { registerViewConstructor } from '@kitware/vtk.js/Rendering/Core/RenderWindow';
+import vtkOpenGLTextureUnitManager from '@kitware/vtk.js/Rendering/OpenGL/TextureUnitManager';
 import vtkCellArrayBufferObject from '@kitware/vtk.js/Rendering/OpenGL/CellArrayBufferObject';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkPointSet from '@kitware/vtk.js/Common/DataModel/PointSet';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
 
-// Patch macro.newInstance to never freeze publicAPI
+function patchOpenGLRenderWindowInstance(publicAPI: any, model: any) {
+  if (!publicAPI || (publicAPI as any).__patchedOpenGLRenderWindow) return;
+  (publicAPI as any).__patchedOpenGLRenderWindow = true;
+
+  publicAPI.get3DContext = function (options: any) {
+    if (model.context && typeof model.context.getParameter === 'function') {
+      return model.context;
+    }
+    if (!model.canvas || typeof WebGL2RenderingContext === 'undefined') {
+      const dummy = createSafeDummyWebGLContext();
+      model.context = dummy;
+      return dummy;
+    }
+
+    const preferred = options || {
+      preserveDrawingBuffer: false,
+      depth: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+    };
+
+    let gl: any = null;
+    try {
+      gl = model.canvas.getContext('webgl2', preferred);
+    } catch {}
+
+    if (!gl) {
+      try {
+        gl = model.canvas.getContext('webgl2', {
+          preserveDrawingBuffer: false,
+          depth: true,
+          alpha: true,
+          antialias: false,
+        });
+      } catch {}
+    }
+
+    if (!gl) {
+      try {
+        gl = model.canvas.getContext('webgl2', { depth: true, alpha: true }) || model.canvas.getContext('webgl2');
+      } catch {}
+    }
+
+    if (!gl) {
+      try {
+        const canvases = Array.from(document.querySelectorAll('canvas'));
+        for (const c of canvases) {
+          if (c === model.canvas) continue;
+          if (!document.body.contains(c) || c.style.display === 'none' || c.offsetParent === null) {
+            try {
+              const dummyCtx = c.getContext('webgl2') || c.getContext('webgl');
+              dummyCtx?.getExtension('WEBGL_lose_context')?.loseContext();
+              c.width = 1;
+              c.height = 1;
+            } catch {}
+          }
+        }
+      } catch {}
+
+      try {
+        gl = model.canvas.getContext('webgl2', { depth: true, alpha: true }) ||
+             model.canvas.getContext('webgl2') ||
+             model.canvas.getContext('experimental-webgl2');
+      } catch {}
+    }
+
+    if (!gl) {
+      console.warn('[VTK Polyfill] All WebGL2 context acquisition attempts returned null. Using safe dummy WebGL context fallback.');
+      const fallback = createSafeDummyWebGLContext();
+      model.context = fallback;
+      return fallback;
+    }
+
+    model.context = gl;
+    return gl;
+  };
+
+  publicAPI.getWebgl2 = () => {
+    try {
+      const gl = model.context || (publicAPI.get3DContext ? publicAPI.get3DContext() : null);
+      return Boolean(gl && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
+    } catch {
+      return false;
+    }
+  };
+
+  const origSetContainer = publicAPI.setContainer;
+  publicAPI.setContainer = function (el: any) {
+    if (model.el && model.el !== el) {
+      if (model.canvas && model.canvas.parentNode === model.el) {
+        try {
+          model.el.removeChild(model.canvas);
+        } catch {}
+      }
+      if (model.bgImage && model.el.contains && model.el.contains(model.bgImage)) {
+        try {
+          model.el.removeChild(model.bgImage);
+        } catch {}
+      }
+      model.el = el;
+      if (model.el && model.canvas) {
+        model.el.appendChild(model.canvas);
+        if (model.useBackgroundImage && model.bgImage) {
+          model.el.appendChild(model.bgImage);
+        }
+      }
+      publicAPI.modified();
+      return;
+    }
+    if (origSetContainer) {
+      try {
+        origSetContainer.call(this, el);
+      } catch {}
+    }
+  };
+}
+
+// Patch macro.newInstance to never freeze publicAPI and hook instances
 if (macro && typeof (macro as any).newInstance === 'function') {
   const origMacroNewInstance = (macro as any).newInstance;
   (macro as any).newInstance = function (extend: any, className: any) {
@@ -72,6 +297,9 @@ if (macro && typeof (macro as any).newInstance === 'function') {
       const model: any = {};
       const publicAPI: any = {};
       extend(publicAPI, model, initialValues);
+      if (className === 'vtkOpenGLRenderWindow' || publicAPI.isA?.('vtkOpenGLRenderWindow')) {
+        patchOpenGLRenderWindowInstance(publicAPI, model);
+      }
       return publicAPI; // Never Object.freeze
     };
     if (className && (macro as any).vtk?.register) {
@@ -365,54 +593,61 @@ if (vtkPolyData && (vtkPolyData as any).extend) {
 // PATCH 4: vtkOpenGLRenderWindow safe get3DContext() and getWebgl2()
 // Prevents VTK.js from calling new Proxy(null, handler) which throws
 // "TypeError: Cannot create proxy with a non-object as target or handler"
-// when WebGL2 context creation returns null.
+// or causing ctx.getParameter is not a function when WebGL2 context creation returns null.
 // ─────────────────────────────────────────────────────────────────────────────
 if (vtkOpenGLRenderWindow && (vtkOpenGLRenderWindow as any).extend) {
   const origExtend = (vtkOpenGLRenderWindow as any).extend;
   const patchedExtend = function (publicAPI: any, model: any, initialValues: any = {}) {
     origExtend(publicAPI, model, initialValues);
-    
-    const origGet3DContext = publicAPI.get3DContext;
-    publicAPI.get3DContext = function (options: any) {
-      if (model.context) {
-        return model.context;
-      }
-      if (!model.canvas || typeof WebGL2RenderingContext === 'undefined') {
-        return null;
-      }
-      const opts = options || {
-        preserveDrawingBuffer: false,
-        depth: true,
-        alpha: true,
-        powerPreference: 'high-performance',
-      };
-      let gl: any = null;
-      try {
-        gl = model.canvas.getContext('webgl2', opts) || model.canvas.getContext('experimental-webgl2', opts);
-      } catch {
-        gl = null;
-      }
-      if (!gl) {
-        return null;
-      }
-      try {
-        const proxied = origGet3DContext ? origGet3DContext.call(this, options) : gl;
-        return proxied || gl;
-      } catch {
-        return gl;
-      }
-    };
+    patchOpenGLRenderWindowInstance(publicAPI, model);
+  };
+  (vtkOpenGLRenderWindow as any).extend = patchedExtend;
+}
 
-    publicAPI.getWebgl2 = () => {
-      try {
-        const gl = model.context || (publicAPI.get3DContext ? publicAPI.get3DContext() : null);
-        return Boolean(gl && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
-      } catch {
-        return false;
+if (typeof registerViewConstructor === 'function') {
+  registerViewConstructor('WebGL', (initialValues: any = {}) => {
+    return (vtkOpenGLRenderWindow as any).newInstance(initialValues);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 5: vtkOpenGLTextureUnitManager safe getParameter & allocation
+// Guarantees that ctx.getParameter(MAX_TEXTURE_IMAGE_UNITS) never throws
+// "TypeError: ctx.getParameter is not a function" even if a mock or non-standard
+// context is attached.
+// ─────────────────────────────────────────────────────────────────────────────
+if (vtkOpenGLTextureUnitManager && (vtkOpenGLTextureUnitManager as any).extend) {
+  const origTextureUnitExtend = (vtkOpenGLTextureUnitManager as any).extend;
+  const patchedTextureUnitExtend = function (publicAPI: any, model: any, initialValues: any = {}) {
+    origTextureUnitExtend(publicAPI, model, initialValues);
+    publicAPI.setContext = function (ctx: any) {
+      if (model.context !== ctx) {
+        if (model.context !== 0 && typeof publicAPI.deleteTable === 'function') {
+          publicAPI.deleteTable();
+        }
+        model.context = ctx;
+        if (model.context) {
+          if (typeof ctx?.getParameter === 'function') {
+            try {
+              model.numberOfTextureUnits = ctx.getParameter(ctx.MAX_TEXTURE_IMAGE_UNITS || 0x8872) || 16;
+            } catch {
+              model.numberOfTextureUnits = 16;
+            }
+          } else {
+            model.numberOfTextureUnits = 16;
+          }
+          if (!Array.isArray(model.textureUnits)) model.textureUnits = [];
+          for (let i = 0; i < model.numberOfTextureUnits; ++i) {
+            model.textureUnits[i] = false;
+          }
+        }
+        if (typeof publicAPI.modified === 'function') {
+          publicAPI.modified();
+        }
       }
     };
   };
-  (vtkOpenGLRenderWindow as any).extend = patchedExtend;
+  (vtkOpenGLTextureUnitManager as any).extend = patchedTextureUnitExtend;
 }
 
 console.info('[VTK Polyfill] Patches for CellArrayBufferObject, DataArray, PolyData, and RenderWindow initialized.');

@@ -7,7 +7,7 @@ import { CertificationReportGenerator } from './CertificationReport';
 
 async function runMasterSystemCertification() {
   console.log('\n================================================================');
-  console.log('  MEDVIEW PRO — ENTERPRISE SYSTEM INTEGRATION & CERTIFICATION   ');
+  console.log('  MERILVIEW — ENTERPRISE SYSTEM INTEGRATION & CERTIFICATION   ');
   console.log('================================================================\n');
 
   // 1. End-to-End Clinical Journey Test

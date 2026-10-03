@@ -1,10 +1,10 @@
-# MedView PRO DICOM Workstation - Master Dependencies Catalog
+# MerilView DICOM Workstation - Master Dependencies Catalog
 
-This document catalogues every production and development package utilized across all subsystems in the MedView PRO DICOM Workstation codebase.
+This document catalogues every production and development package utilized across all subsystems in the MerilView DICOM Workstation codebase.
 
 ---
 
-## 1. MedView PRO Diagnostic Viewer Frontend (`dicom ui viewer/frontend`)
+## 1. MerilView Diagnostic Viewer Frontend (`dicom ui viewer/frontend`)
 
 ### Production Dependencies
 ```json
@@ -53,7 +53,7 @@ This document catalogues every production and development package utilized acros
 
 ---
 
-## 2. MedView PRO Backend API (`dicom ui viewer/backend`)
+## 2. MerilView Backend API (`dicom ui viewer/backend`)
 
 ### Python Packages (`requirements.txt`)
 * **FastAPI Core**: `fastapi>=0.110.0`, `uvicorn[standard]>=0.28.0`, `pydantic>=2.6.0`, `pydantic-settings>=2.2.0`
@@ -78,7 +78,7 @@ This document catalogues every production and development package utilized acros
 
 ---
 
-## 4. MedView VR 3D Engine (`medview-vr`)
+## 4. MerilView VR 3D Engine (`medview-vr`)
 
 ### Key Packages
 * **Production**: `@kitware/vtk.js`, `dicom-parser`, `fflate`, `jpeg-lossless-decoder-js`, `react`, `react-dom`, `zustand`

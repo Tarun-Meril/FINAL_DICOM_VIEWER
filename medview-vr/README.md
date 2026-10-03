@@ -1,4 +1,4 @@
-# MedView VR
+# MerilView VR
 
 **Standalone CT 3D volume visualisation and rendering engine — R&D prototype.**
 
@@ -6,7 +6,7 @@
 > regulator. Not validated for clinical use, diagnosis, or treatment decisions.
 > See [`docs/clinical-safety.md`](docs/clinical-safety.md).
 
-MedView VR loads a real DICOM CT study, reconstructs a physically correct voxel volume
+MerilView VR loads a real DICOM CT study, reconstructs a physically correct voxel volume
 in DICOM patient (LPS) coordinates, and renders it with GPU ray-cast volume rendering.
 It is built as an independent engine so that it can be validated on its own before being
 integrated into the MedView platform. It deliberately implements **only** 3D: there is no

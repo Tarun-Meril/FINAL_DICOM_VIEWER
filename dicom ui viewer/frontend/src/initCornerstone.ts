@@ -1,6 +1,6 @@
 import './vtkPolyfill';
 import * as cornerstoneCore from '@cornerstonejs/core';
-import { init as initCore, volumeLoader, cornerstoneStreamingImageVolumeLoader, metaData, RenderingEngine, getRenderingEngine, Enums } from '@cornerstonejs/core';
+import { init as initCore, volumeLoader, cornerstoneStreamingImageVolumeLoader, metaData, RenderingEngine, getRenderingEngine, Enums, utilities } from '@cornerstonejs/core';
 import {
   init as initTools,
   addTool,
@@ -219,10 +219,29 @@ function customMetaDataProvider(type: string, imageId: string): any {
   return undefined;
 }
 
+function parseNumeric(val: any, fallback: number): number {
+  if (val === undefined || val === null) return fallback;
+  if (Array.isArray(val)) return parseNumeric(val[0], fallback);
+  if (typeof val === 'string') {
+    const first = val.split('\\')[0].trim();
+    const n = parseFloat(first);
+    return isNaN(n) ? fallback : n;
+  }
+  const n = Number(val);
+  return isNaN(n) ? fallback : n;
+}
+
 async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
   try {
     const meta = metadataStore.get(imageId) || {};
-    const pngUrl = `${API_BASE_URL}/api/instances/${sopUid}/png`;
+    const modality = meta.modality || meta.Modality || 'CT';
+    const slope = parseNumeric(meta.rescaleSlope ?? meta.rescale_slope, 1);
+    const intercept = parseNumeric(meta.rescaleIntercept ?? meta.rescale_intercept, modality === 'CT' ? -1024 : 0);
+    const wc = parseNumeric(meta.windowCenter ?? meta.window_center, modality === 'CT' ? 60 : 400);
+    const ww = parseNumeric(meta.windowWidth ?? meta.window_width, modality === 'CT' ? 350 : 800);
+    const minVal = wc - ww / 2.0;
+
+    const pngUrl = `${API_BASE_URL}/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -240,98 +259,145 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
     const blob = await response.blob();
     const imageBitmap = await createImageBitmap(blob);
 
-  const canvas = document.createElement('canvas');
-  const width = imageBitmap.width;
-  const height = imageBitmap.height;
-  canvas.width = width;
-  canvas.height = height;
+    const canvas = document.createElement('canvas');
+    const width = imageBitmap.width;
+    const height = imageBitmap.height;
+    canvas.width = width;
+    canvas.height = height;
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Failed to get 2d context for fallback frame');
-  ctx.drawImage(imageBitmap, 0, 0);
-  const imgData = ctx.getImageData(0, 0, width, height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get 2d context for fallback frame');
+    ctx.drawImage(imageBitmap, 0, 0);
+    const imgData = ctx.getImageData(0, 0, width, height);
 
-  const pixels16 = new Uint16Array(width * height);
-  let minPixelValue = 65535;
-  let maxPixelValue = 0;
+    const ps = meta.pixelSpacing || meta.pixel_spacing || [1, 1];
 
-  for (let i = 0; i < width * height; i++) {
-    const val = imgData.data[i * 4] * 16;
-    pixels16[i] = val;
-    if (val < minPixelValue) minPixelValue = val;
-    if (val > maxPixelValue) maxPixelValue = val;
-  }
+    const pixels16 = new Uint16Array(width * height);
+    let minPixelValue = 65535;
+    let maxPixelValue = 0;
 
-  const ps = meta.pixelSpacing || meta.pixel_spacing || [1, 1];
-  const modality = meta.modality || meta.Modality || 'MR';
-  const wc = Number(meta.windowCenter ?? meta.window_center ?? (modality === 'CT' ? 40 : 400));
-  const ww = Number(meta.windowWidth ?? meta.window_width ?? (modality === 'CT' ? 400 : 800));
+    for (let i = 0; i < width * height; i++) {
+      const val8 = imgData.data[i * 4]; // 0 - 255
+      const hu = minVal + (val8 / 255.0) * ww;
+      const rawStored = Math.round((hu - intercept) / (slope || 1));
+      const clamped = Math.max(0, Math.min(65535, rawStored));
+      pixels16[i] = clamped;
+      if (clamped < minPixelValue) minPixelValue = clamped;
+      if (clamped > maxPixelValue) maxPixelValue = clamped;
+    }
 
-  let voxelManager: any;
-  if ((cornerstoneCore as any).utilities?.VoxelManager?.createImageVoxelManager) {
-    voxelManager = (cornerstoneCore as any).utilities.VoxelManager.createImageVoxelManager({
-      dimensions: [width, height, 1],
-      scalarData: pixels16,
-    });
-  } else {
-    voxelManager = {
+    let voxelManager: any;
+    if (utilities?.VoxelManager?.createImageVoxelManager) {
+      try {
+        voxelManager = utilities.VoxelManager.createImageVoxelManager({
+          scalarData: pixels16,
+          width,
+          height,
+          numberOfComponents: 1,
+        });
+      } catch (e) {
+        // fallback below
+      }
+    }
+    
+    if (!voxelManager) {
+      voxelManager = {
+        getScalarData: () => pixels16,
+        getScalarDataLength: () => pixels16.length,
+        getVoxel: (index: number) => pixels16[index],
+        setVoxel: (index: number, val: number) => { pixels16[index] = val; },
+        getVoxelAtMatIndex: (x: number, y: number, _z: number) => pixels16[y * width + x],
+        setVoxelAtMatIndex: (x: number, y: number, _z: number, val: number) => { pixels16[y * width + x] = val; },
+        getBounds: () => [0, width - 1, 0, height - 1, 0, 0],
+        getDimensions: () => [width, height, 1],
+        getConstructor: () => Uint16Array,
+        _getConstructor: () => Uint16Array,
+        getMiddleSliceData: () => ({ scalarData: pixels16 }),
+      };
+    }
+
+    return {
+      imageId,
+      dataType: 'Uint16Array',
+      minPixelValue,
+      maxPixelValue,
+      slope,
+      intercept,
+      windowCenter: [wc],
+      windowWidth: [ww],
+      getPixelData: () => pixels16,
+      getCanvas: () => canvas,
+      rows: height,
+      columns: width,
+      height,
+      width,
+      color: false,
+      rgba: false,
+      invert: false,
+      columnPixelSpacing: Number(ps[0]),
+      rowPixelSpacing: Number(ps[1]),
+      sizeInBytes: pixels16.byteLength,
+      numberOfComponents: 1,
+      voxelManager,
+      imageFrame: {
+        rows: height,
+        columns: width,
+        pixelData: pixels16,
+        smallestPixelValue: minPixelValue,
+        largestPixelValue: maxPixelValue,
+      },
+    };
+  } catch (err) {
+    console.error(`[Cornerstone3D] loadServerPixelFrameImage completely failed for ${sopUid}:`, err);
+    const width = 256;
+    const height = 256;
+    const pixels16 = new Uint16Array(width * height);
+    const fallbackCanvas = document.createElement('canvas');
+    fallbackCanvas.width = width;
+    fallbackCanvas.height = height;
+    const fallbackVoxelManager = {
       getScalarData: () => pixels16,
       getScalarDataLength: () => pixels16.length,
       getVoxel: (index: number) => pixels16[index],
-      setVoxel: (index: number, val: number) => { pixels16[index] = val; },
-      getVoxelAtMatIndex: (x: number, y: number, _z: number) => pixels16[y * width + x],
-      setVoxelAtMatIndex: (x: number, y: number, _z: number, val: number) => { pixels16[y * width + x] = val; },
+      setVoxel: () => {},
+      getVoxelAtMatIndex: () => 0,
+      setVoxelAtMatIndex: () => {},
       getBounds: () => [0, width - 1, 0, height - 1, 0, 0],
       getDimensions: () => [width, height, 1],
       getConstructor: () => Uint16Array,
       _getConstructor: () => Uint16Array,
       getMiddleSliceData: () => ({ scalarData: pixels16 }),
     };
-  }
-
-  return {
-    imageId,
-    minPixelValue: 0,
-    maxPixelValue: 4095,
-    slope: 1, // Ignore original slope since backend already applied it
-    intercept: 0, // Ignore original intercept since backend already applied it
-    windowCenter: 2040, // Middle of 0-4080 range
-    windowWidth: 4080, // Full width of 0-4080 range
-    getPixelData: () => pixels16,
-    rows: height,
-    columns: width,
-    height,
-    width,
-    color: false,
-    columnPixelSpacing: Number(ps[0]),
-    rowPixelSpacing: Number(ps[1]),
-    sizeInBytes: pixels16.byteLength,
-    numberOfComponents: 1,
-  };
-  } catch (err) {
-    console.error(`[Cornerstone3D] loadServerPixelFrameImage completely failed for ${sopUid}:`, err);
-    // Return a dummy 256x256 image so it doesn't crash the entire viewer with unhandled rejection
-    const width = 256;
-    const height = 256;
-    const pixels16 = new Uint16Array(width * height);
     return {
       imageId,
+      dataType: 'Uint16Array',
       minPixelValue: 0,
       maxPixelValue: 0,
       slope: 1.0,
       intercept: 0,
-      windowCenter: 2040,
-      windowWidth: 4080,
+      windowCenter: [128],
+      windowWidth: [256],
       getPixelData: () => pixels16,
+      getCanvas: () => fallbackCanvas,
       rows: height,
       columns: width,
       height,
       width,
       color: false,
+      rgba: false,
+      invert: false,
       columnPixelSpacing: 1,
       rowPixelSpacing: 1,
       sizeInBytes: pixels16.byteLength,
       numberOfComponents: 1,
+      voxelManager: fallbackVoxelManager,
+      imageFrame: {
+        rows: height,
+        columns: width,
+        pixelData: pixels16,
+        smallestPixelValue: 0,
+        largestPixelValue: 0,
+      },
     };
   }
 }
@@ -340,18 +406,13 @@ function wadoImageLoaderWithFallback(imageId: string, options: any) {
   const sopMatch = imageId.match(/\/instances\/([^\/]+)\/file/);
   const sopUid = sopMatch ? sopMatch[1] : null;
 
-  console.log(`[ImageLoader] Requesting imageId: ${imageId}`);
-
   try {
     const res = dicomImageLoader.wadouri.loadImage(imageId, options);
     if (res && res.promise) {
       return {
-        promise: res.promise.then((image: any) => {
-          if (sopUid) console.log(`[ImageLoader] Successfully loaded DICOM for ${sopUid}`);
-          return image;
-        }).catch((err: any) => {
+        promise: res.promise.catch((err: any) => {
           if (sopUid) {
-            console.warn(`[Cornerstone3D] Direct WADO-URI DICOM load failed for ${sopUid}, trying PNG fallback:`, err);
+            console.warn(`[Cornerstone3D] Native wadouri loadImage failed for ${sopUid}, using server PNG fallback:`, err);
             return loadServerPixelFrameImage(imageId, sopUid);
           }
           throw err;
@@ -359,17 +420,17 @@ function wadoImageLoaderWithFallback(imageId: string, options: any) {
         cancelFn: res.cancelFn || (() => { }),
       };
     }
+    return res;
   } catch (err) {
     if (sopUid) {
-      console.warn(`[Cornerstone3D] Synchronous error for ${sopUid}, falling back to PNG:`, err);
+      console.warn(`[Cornerstone3D] Synchronous error loading ${sopUid}, falling back to PNG:`, err);
       return {
         promise: loadServerPixelFrameImage(imageId, sopUid),
         cancelFn: () => { },
       };
     }
+    throw err;
   }
-
-  return dicomImageLoader.wadouri.loadImage(imageId, options);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -410,7 +471,7 @@ async function initCornerstoneOnce() {
       useCPURendering: false,
       strictZSpacingForVolumeViewport: false,
       renderingEngineMode: Enums.RenderingEngineModeEnum.ContextPool,
-      webGlContextCount: 3,
+      webGlContextCount: 8,
     } as any
   });
   await initTools();

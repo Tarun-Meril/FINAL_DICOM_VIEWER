@@ -1,8 +1,8 @@
-# MedView PRO Diagnostic Workstation - Environment & Deployment Guide
+# MerilView Diagnostic Workstation - Environment & Deployment Guide
 
-This guide describes how to configure, run, and deploy the MedView PRO Diagnostic Workstation.
+This guide describes how to configure, run, and deploy the MerilView Diagnostic Workstation.
 
-MedView PRO consists of a high-performance React 19 / CornerstoneJS frontend shell, a FastAPI gateway backend service, a PostgreSQL relational store, a Redis task broker/cache layer, Celery background queues, and an Orthanc PACS server.
+MerilView consists of a high-performance React 19 / CornerstoneJS frontend shell, a FastAPI gateway backend service, a PostgreSQL relational store, a Redis task broker/cache layer, Celery background queues, and an Orthanc PACS server.
 
 ---
 
@@ -46,7 +46,7 @@ Generate a `.env` file in the `backend/` folder (or copy `.env.development`):
 
 | Variable Name | Default Value | Description |
 | :--- | :--- | :--- |
-| `APP_NAME` | `MedView PRO Backend` | Display name of the API gateway. |
+| `APP_NAME` | `MerilView Backend` | Display name of the API gateway. |
 | `DEBUG` | `true` | Enables FastAPI auto-reload and verbose logging. |
 | `SECRET_KEY` | `change-me-in-production` | Secret key for generating JWT authentication tokens. |
 | `DATABASE_URL` | *None* | Override PostgreSQL connection string (takes precedence). |
@@ -88,7 +88,7 @@ With Docker Desktop installed, spin up the entire pre-configured ecosystem using
 docker compose up -d
 ```
 
-*   **MedView PRO Viewer Frontend:** [http://localhost:5174](http://localhost:5174) or [http://localhost:3000](http://localhost:3000)
+*   **MerilView Viewer Frontend:** [http://localhost:5174](http://localhost:5174) or [http://localhost:3000](http://localhost:3000)
 *   **FastAPI API Gateway:** [http://localhost:8000](http://localhost:8000) (Swagger Docs: [/docs](http://localhost:8000/docs))
 *   **Orthanc PACS Explorer:** [http://localhost:8042/app/explorer.html](http://localhost:8042/app/explorer.html)
 *   **PostgreSQL Database:** Bound on host port `5432`

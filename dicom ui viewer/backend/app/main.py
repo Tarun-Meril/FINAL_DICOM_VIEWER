@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -27,7 +28,7 @@ logger = logging.getLogger("medview_pro")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup validation and automatic migration run
-    logger.info("Initializing MedView PRO Backend Services...")
+    logger.info("Initializing MerilView Backend Services...")
     
     # 1. Run migrations automatically
     try:
@@ -71,7 +72,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="MedView PRO Diagnostic Workstation - Backend Service API",
+    description="MerilView Diagnostic Workstation - Backend Service API",
     version="1.0.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
@@ -278,7 +279,7 @@ class ViewerConnectionManager:
         self.electron_connections: list[WebSocket] = []
         self.active_study = None
 
-    async def connect(self, websocket: WebSocket, client_type: str = "web"):
+    async def connect(self, websocket: WebSocket, client_type: str = "web", study_uid: Optional[str] = None):
         await websocket.accept()
         self.active_connections.append(websocket)
         if client_type == "electron":
@@ -287,8 +288,10 @@ class ViewerConnectionManager:
         else:
             logger.info(f"[Sync Hub] Web viewer registered. Total active clients: {len(self.active_connections)}")
 
-        # Sync new client with the currently active study immediately
-        if self.active_study:
+        if study_uid:
+            self.active_study = {"studyInstanceUID": study_uid, "timestamp": int(time.time() * 1000)}
+            logger.info(f"[Sync Hub] Client connected with active study: {study_uid}")
+        elif self.active_study:
             logger.info(f"[Sync Hub] Sending current active study to new connection: {self.active_study['studyInstanceUID']}")
             try:
                 await websocket.send_json({
@@ -323,8 +326,8 @@ class ViewerConnectionManager:
 viewer_manager = ViewerConnectionManager()
 
 @app.websocket("/ws/viewer")
-async def ws_viewer_endpoint(websocket: WebSocket, clientType: str = "web"):
-    await viewer_manager.connect(websocket, client_type=clientType)
+async def ws_viewer_endpoint(websocket: WebSocket, clientType: str = "web", studyUID: Optional[str] = None):
+    await viewer_manager.connect(websocket, client_type=clientType, study_uid=studyUID)
     try:
         while True:
             # Keep the websocket open and listen

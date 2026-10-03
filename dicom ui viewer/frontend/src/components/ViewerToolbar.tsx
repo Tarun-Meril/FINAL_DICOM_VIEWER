@@ -5,7 +5,7 @@ import {
   Sun, Sliders, RefreshCw, Ruler, Circle, Square, PenTool, Type, ArrowUpRight,
   Brain, Flame, FileText, Mic, Layers, Cpu, Eye, Crosshair, MoreHorizontal,
   MessageSquare, FileCode, Folder, FileImage, FileDown, Grid, Sparkles,
-  Scale, Maximize, Scissors, MapPin, Tag, Share2, Link,
+  Scale, Maximize, Scissors, MapPin, Tag, Share2, Link, Activity,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -364,6 +364,7 @@ export default function ViewerToolbar({
         { id: 'color_maps', label: 'Color Maps',  icon: ic(Flame),     tooltip: 'Color Lookup Tables' },
         { id: 'fusion',     label: 'Fusion',      icon: ic(Layers),    tooltip: 'Fuse CT / PET / MRI' },
         { id: 'ruler_ov',   label: 'Ruler',       icon: ic(Ruler),     tooltip: 'Toggle Desktop Ruler' },
+        { id: 'diagnostics',label: 'Error Finder',icon: ic(Activity),  tooltip: 'Diagnose PACS Connection & Viewport Loading' },
       ],
     },
   ];

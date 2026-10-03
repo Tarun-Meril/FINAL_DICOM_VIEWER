@@ -111,7 +111,7 @@ export const SettingsPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-glass)', paddingBottom: '8px' }}>
             <span>Viewer Integration</span>
-            <span style={{ color: 'var(--color-accent)' }}>MedView PRO (Active)</span>
+            <span style={{ color: 'var(--color-accent)' }}>MerilView (Active)</span>
           </div>
         </div>
 
@@ -169,7 +169,7 @@ export const SettingsPage: React.FC = () => {
         <div style={{ marginTop: 'auto', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '16px', borderRadius: '8px', display: 'flex', gap: '10px' }}>
           <AlertOctagon size={20} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            <strong>Note:</strong> Opening a study will launch the MedView PRO DICOM Viewer in a separate browser tab, keeping the PACS Study Browser and the Viewer completely decoupled.
+            <strong>Note:</strong> Opening a study will launch the MerilView DICOM Viewer in a separate browser tab, keeping the PACS Study Browser and the Viewer completely decoupled.
           </div>
         </div>
       </div>

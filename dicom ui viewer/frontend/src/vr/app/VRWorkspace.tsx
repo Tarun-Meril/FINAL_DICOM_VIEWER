@@ -25,7 +25,7 @@ const RIGHT_TABS: Array<[PanelId, string]> = [
 ];
 
 /**
- * Shared MedView VR workstation body.
+ * Shared MerilView VR workstation body.
  *
  * Route-agnostic: study identity arrives as props and is forwarded to
  * LoadScreen. The embedded VR mode in the main 2D viewer and the standalone

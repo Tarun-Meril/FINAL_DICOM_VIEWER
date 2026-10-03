@@ -1,4 +1,4 @@
--- Schema definitions for MedView Pro - Share Study Supabase tables.
+-- Schema definitions for MerilView - Share Study Supabase tables.
 -- Run this in your Supabase SQL Editor.
 
 -- Enable UUID generation extension if not already enabled

@@ -42,13 +42,30 @@ export function Viewport(): JSX.Element {
     let engine: VolumeRenderEngine;
     try {
       engine = new VolumeRenderEngine(hostRef.current);
-    } catch (e) {
-      useAppStore.getState().setError({
-        message: e instanceof MedViewError ? e.message : String(e),
-        detail: e instanceof MedViewError ? e.detail : undefined,
-        code: e instanceof MedViewError ? e.code : undefined,
-      });
-      return;
+    } catch (e: any) {
+      console.warn('[Viewport] Initial WebGL 3D engine creation attempt failed, retrying with clean host...', e);
+      try {
+        if (hostRef.current) {
+          const oldCanvases = hostRef.current.querySelectorAll('canvas');
+          oldCanvases.forEach((c) => {
+            try {
+              const oldGl = c.getContext('webgl2') || c.getContext('webgl');
+              oldGl?.getExtension('WEBGL_lose_context')?.loseContext();
+              c.width = 1;
+              c.height = 1;
+            } catch {}
+          });
+          hostRef.current.innerHTML = '';
+        }
+        engine = new VolumeRenderEngine(hostRef.current);
+      } catch (retryErr: any) {
+        useAppStore.getState().setError({
+          message: retryErr instanceof MedViewError ? retryErr.message : String(retryErr),
+          detail: retryErr instanceof MedViewError ? retryErr.detail : undefined,
+          code: retryErr instanceof MedViewError ? retryErr.code : undefined,
+        });
+        return;
+      }
     }
     engineRef.current = engine;
     const session = getSession();
@@ -117,7 +134,11 @@ export function Viewport(): JSX.Element {
       clearInterval(statTimer);
       ro.disconnect();
       unsubscribeCamera();
-      engine.dispose();
+      try {
+        engine.dispose();
+      } catch (e) {
+        console.warn('[Viewport] Non-critical warning during engine.dispose():', e);
+      }
       engineRef.current = null;
       if (session) session.engine = null;
     };

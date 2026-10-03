@@ -11,7 +11,7 @@ class ExportService:
         """Fetch and package all study instances into a ZIP archive for export"""
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            z.writestr("manifest.txt", f"MedView PRO Export File\nStudy Instance UID: {study_uid}\n")
+            z.writestr("manifest.txt", f"MerilView Export File\nStudy Instance UID: {study_uid}\n")
             z.writestr("dicom/instance_1.dcm", b"DICOM_FILE_BYTES_PLACEHOLDER")
         buf.seek(0)
         return StreamingResponse(

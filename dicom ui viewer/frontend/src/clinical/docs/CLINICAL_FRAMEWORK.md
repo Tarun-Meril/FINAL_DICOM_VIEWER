@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise Clinical Framework & Workflow Foundation
+# MerilView — Enterprise Clinical Framework & Workflow Foundation
 
 ## Overview
 Phase 20.5 establishes the clinical application framework layer (`frontend/src/clinical/`) that sits between the 3D Rendering Engine (`frontend/src/3d/`) and the user interface. It provides decoupled infrastructure for Study Contexts, Workflow Management, Viewport Synchronization, Annotation/Bookmark persistence, Quantitative Measurements, Structured Reporting, and Hanging Protocol execution.

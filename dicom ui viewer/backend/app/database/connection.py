@@ -2,7 +2,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config.config import settings
 
-DATABASE_URL = settings.DATABASE_URL or f"postgresql://{settings.DATABASE_USER}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_DB}"
+db_url = settings.DATABASE_URL or f"postgresql+psycopg2://{settings.DATABASE_USER}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_DB}"
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+DATABASE_URL = db_url
 
 # Use SQLite fallback in development if running locally without Postgres active
 if not settings.DATABASE_URL and settings.DATABASE_HOST == "localhost" and settings.DATABASE_PASSWORD == "postgres":

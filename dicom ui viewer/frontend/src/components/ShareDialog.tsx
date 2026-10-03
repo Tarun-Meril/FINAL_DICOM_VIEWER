@@ -125,7 +125,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
         },
         expires_at: expiresAt,
         password: password.trim() || undefined,
-        created_by: 'MedView Pro Workstation'
+        created_by: 'MerilView Workstation'
       };
 
       const res = await fetch(`${SHARE_API_BASE_URL}/api/share-study`, {
@@ -249,7 +249,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
           <body onload="window.print(); window.close();">
             <div class="container">
               <img src="${qrCodeDataUrl}" />
-              <h3>MedView Pro Study QR</h3>
+              <h3>MerilView Study QR</h3>
               <p>${shareLink}</p>
             </div>
           </body>

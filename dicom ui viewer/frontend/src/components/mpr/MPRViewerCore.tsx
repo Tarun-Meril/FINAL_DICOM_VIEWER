@@ -1,19 +1,8 @@
+import React, { useState, useEffect } from 'react';
 import { MPRWorkspace } from '../../mpr/ui/MPRWorkspace';
+import ClinicalServerMPRView from '../../mpr/ui/ClinicalServerMPRView';
 import '../../mpr/mpr.css';
 
-/**
- * The integrated MPR workstation.
- *
- * This is the clinically validated MerilView MPR engine — the same
- * MPRStateManager, MPRViewportManager, DICOMGeometry and plane cameras that
- * produced the validation captures under `mpr building/validation` — ported to
- * Cornerstone v4 so it runs inside the main viewer's bundle rather than in an
- * iframe.
- *
- * It is a thin shell on purpose: everything below `MPRWorkspace` is the
- * validated tree, and this file adds only the scoping wrapper that keeps the
- * workstation's styles off the rest of the application.
- */
 export interface MPRViewerCoreProps {
   /** StudyInstanceUID to reconstruct. Never hardcoded. */
   studyUID?: string;
@@ -34,15 +23,43 @@ export default function MPRViewerCore({
   onClose,
   variant = 'embedded',
 }: MPRViewerCoreProps) {
+  // Keep server mode always as required
+  const [engineMode, setEngineMode] = useState<'server' | 'webgl'>('server');
+  const [hasWebGLError, setHasWebGLError] = useState(false);
+
+  // Monitor for global WebGL context loss to automatically failover to Server MPR
+  useEffect(() => {
+    const handleContextLost = (e: Event) => {
+      console.warn('[MPR] WebGL context loss detected globally — failing over to Server MPR engine');
+      setHasWebGLError(true);
+      setEngineMode('server');
+    };
+
+    window.addEventListener('webglcontextlost', handleContextLost, true);
+    return () => {
+      window.removeEventListener('webglcontextlost', handleContextLost, true);
+    };
+  }, []);
+
   return (
     <div className="merilview-mpr" style={{ width: '100%', height: '100%' }}>
-      <MPRWorkspace
-        studyUID={studyUID}
-        seriesUID={seriesUID}
-        apiBase={apiBase}
-        onClose={onClose}
-        variant={variant}
-      />
+      {engineMode === 'server' && studyUID ? (
+        <ClinicalServerMPRView
+          studyUID={studyUID}
+          seriesUID={seriesUID}
+          onClose={onClose}
+          onSwitchToWebGL={() => setEngineMode('webgl')}
+          hasWebGLError={hasWebGLError}
+        />
+      ) : (
+        <MPRWorkspace
+          studyUID={studyUID}
+          seriesUID={seriesUID}
+          apiBase={apiBase}
+          onClose={onClose}
+          variant={variant}
+        />
+      )}
     </div>
   );
 }

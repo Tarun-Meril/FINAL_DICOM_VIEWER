@@ -20,53 +20,52 @@ export function SeriesThumbnail({ studyUID, seriesUID, imageIds: initialImageIds
   const reqIdRef = useRef(Math.random().toString(36).substring(7));
 
   useEffect(() => {
-    const config = { width: 96, height: 96, format: 'image/webp', version: 2 };
+    let isCancelled = false;
 
-    const handleVisibility = (entries: IntersectionObserverEntry[]) => {
-      const isVisible = entries[0].isIntersecting;
-      
-      // Request thumbnail with priority based on visibility
-      ThumbnailService.getThumbnail({
-        id: reqIdRef.current,
-        studyUID,
-        seriesUID,
-        imageIds: initialImageIds,
-        fetchImageIds: async () => {
+    const loadThumbnail = async () => {
+      try {
+        setStatus(ThumbnailStatus.Rendering);
+        let sopUid = '';
+
+        if (initialImageIds && initialImageIds.length > 0) {
+          const midIdx = Math.floor(initialImageIds.length / 2);
+          const match = initialImageIds[midIdx].match(/\/instances\/([^\/]+)\/file/);
+          if (match) sopUid = match[1];
+        }
+
+        if (!sopUid && seriesUID && seriesUID !== 'unknown') {
           const res = await fetch(`${API_BASE_URL}/api/series/${seriesUID}/instances`);
-          const data = await res.json();
-          if (Array.isArray(data)) {
-             return data.map(inst => `wadouri:${API_BASE_URL}/api/instances/${inst.sop_instance_uid || inst.sopInstanceUid}/file`);
-          }
-          return [];
-        },
-        modality,
-        config,
-        priority: isVisible ? ThumbnailPriority.Visible : ThumbnailPriority.Prefetch,
-        onStatusChange: (newStatus, url) => {
-          setStatus(newStatus);
-          if (url && newStatus === ThumbnailStatus.Ready) {
-            setImageUrl(url);
+          if (res.ok) {
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (data?.data || []);
+            if (list.length > 0) {
+              const mid = list[Math.floor(list.length / 2)] || list[0];
+              sopUid = mid.sop_instance_uid || mid.sopInstanceUid || '';
+            }
           }
         }
-      });
+
+        if (sopUid && !isCancelled) {
+          const directPngUrl = `${API_BASE_URL}/api/instances/${sopUid}/png`;
+          setImageUrl(directPngUrl);
+          setStatus(ThumbnailStatus.Ready);
+          return;
+        }
+
+        if (!isCancelled) {
+          setStatus(ThumbnailStatus.Failed);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setStatus(ThumbnailStatus.Failed);
+        }
+      }
     };
 
-    const observer = new IntersectionObserver(handleVisibility, {
-      root: null, // viewport
-      rootMargin: '100px', // start loading slightly before it enters screen
-      threshold: 0.1
-    });
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    loadThumbnail();
 
     return () => {
-      observer.disconnect();
-      // Cancel pending request if unmounted
-      ThumbnailService.cancelRequest(reqIdRef.current);
-      // Release reference counted Object URL
-      ThumbnailService.releaseThumbnail(studyUID, seriesUID, modality, config);
+      isCancelled = true;
     };
   }, [studyUID, seriesUID, initialImageIds, modality]);
 

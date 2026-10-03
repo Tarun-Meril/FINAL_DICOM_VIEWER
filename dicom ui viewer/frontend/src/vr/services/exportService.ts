@@ -159,7 +159,7 @@ export function capturePresentationState(): PresentationState {
     schema: PRESENTATION_STATE_SCHEMA,
     version: PRESENTATION_STATE_VERSION,
     createdAt: new Date().toISOString(),
-    application: { name: 'MedView VR', version: APP_VERSION },
+    application: { name: 'MerilView VR', version: APP_VERSION },
     dataset: {
       studyInstanceUID: session.volume.provenance.studyInstanceUID,
       seriesInstanceUID: session.volume.provenance.seriesInstanceUID,

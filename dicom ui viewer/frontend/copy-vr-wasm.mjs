@@ -31,7 +31,9 @@ const targets = [
 ];
 
 const out = path.resolve('public/wasm');
+const outAssets = path.resolve('public/assets/wasm');
 fs.mkdirSync(out, { recursive: true });
+fs.mkdirSync(outAssets, { recursive: true });
 
 const missing = [];
 let copied = 0;
@@ -43,7 +45,9 @@ for (const [pkg, rel, why] of targets) {
     continue;
   }
   const dest = path.join(out, path.basename(src));
+  const destAssets = path.join(outAssets, path.basename(src));
   fs.copyFileSync(src, dest);
+  fs.copyFileSync(src, destAssets);
   copied++;
   console.log(`  staged ${path.basename(src)}  ${(fs.statSync(dest).size / 1024).toFixed(0)} kB  — ${why}`);
 }

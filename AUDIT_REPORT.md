@@ -1,6 +1,6 @@
-# MedView PRO DICOM Workstation - Technical & Architectural Audit Report
+# MerilView DICOM Workstation - Technical & Architectural Audit Report
 
-This document compiles the architectural audit findings, clinical safety reviews, security posture, and performance optimizations for the MedView PRO DICOM Workstation.
+This document compiles the architectural audit findings, clinical safety reviews, security posture, and performance optimizations for the MerilView DICOM Workstation.
 
 ---
 

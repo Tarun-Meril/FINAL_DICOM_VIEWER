@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise System Integration Testing & Final Production Certification Report (Phase 24.5)
+# MerilView — Enterprise System Integration Testing & Final Production Certification Report (Phase 24.5)
 
 ## System Overview & Certification Summary
 Phase 24.5 verifies that all completed architectural, rendering, clinical, reconstruction, segmentation, intelligence, and AI modules (Phases 19 through 24) operate as one unified, high-performance, production-grade enterprise medical imaging workstation.

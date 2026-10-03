@@ -1,41 +1,86 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeImage, session, protocol, net } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
+import { ServiceManager } from './serviceManager.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const viewerConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../viewer.config.json'), 'utf8'));
-const viewerDevUrl = viewerConfig.baseUrl;
+let viewerDevUrl = 'http://localhost:5174';
+try {
+  const configPath = path.join(__dirname, '../../../viewer.config.json');
+  if (fs.existsSync(configPath)) {
+    const viewerConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    viewerDevUrl = viewerConfig.baseUrl || viewerDevUrl;
+  }
+} catch (_) {}
+
+// Register custom privileged scheme 'app' so ES module workers and WebAssembly work with a standard origin
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: {
+      standard: true,
+      secure: true,
+      allowServiceWorkers: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
+
+// Initialize Windows Service & Data Storage Manager
+const serviceManager = new ServiceManager(__dirname);
 
 // Enable GPU and WebGL hardware acceleration required by Cornerstone3D and VTK.js MPR/VR rendering
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer');
-// Allow up to 32 simultaneous active WebGL contexts so multi-viewport MPR & 2D rendering never trigger context loss
-app.commandLine.appendSwitch('max-active-webgl-contexts', '32');
+// Allow up to 64 simultaneous active WebGL contexts so multi-viewport MPR & 2D rendering never trigger context loss
+app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
+app.commandLine.appendSwitch('enable-webgl');
+app.commandLine.appendSwitch('enable-zero-copy');
 // Prevent GPU shader cache disk creation errors on Windows without disabling GPU
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
-app.commandLine.appendSwitch('disable-gpu-sandbox');
-app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('allow-file-access-from-files');
 
-// Protocol Scheme Client for deep linking
+// Protocol Scheme Client for deep linking (merilview:// with backward-compatible medview:// support)
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('merilview', process.execPath, [path.resolve(process.argv[1])]);
     app.setAsDefaultProtocolClient('medview', process.execPath, [path.resolve(process.argv[1])]);
   }
 } else {
+  app.setAsDefaultProtocolClient('merilview');
   app.setAsDefaultProtocolClient('medview');
 }
 
 let mainWindow = null;
 let startupDeepLinkUrl = null;
+let startupStudyUid = null;
+let startupShareToken = null;
 
-// Parse initial arguments on startup (Windows deep linking)
-const deepLinkUrl = process.argv.find(arg => arg.startsWith('medview://'));
+// Parse initial arguments on startup (Windows and Linux deep linking for both merilview:// and medview://)
+const deepLinkUrl = process.argv.find(arg => arg.startsWith('merilview://') || arg.startsWith('medview://'));
 if (deepLinkUrl) {
   startupDeepLinkUrl = deepLinkUrl;
+  try {
+    handleDeepLink(deepLinkUrl);
+  } catch (e) { }
 }
+
+// macOS deep-linking listener
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  startupDeepLinkUrl = url;
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    handleDeepLink(url);
+  }
+});
 
 // Single Instance Lock — only enforce in production to avoid dev restart issues
 const gotTheLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
@@ -47,7 +92,7 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
 
-      const url = commandLine.find(arg => arg.startsWith('medview://'));
+      const url = commandLine.find(arg => arg.startsWith('merilview://') || arg.startsWith('medview://'));
       if (url) {
         handleDeepLink(url);
       }
@@ -56,54 +101,119 @@ if (!gotTheLock) {
 }
 
 function handleDeepLink(url) {
-  if (!mainWindow) return;
-  if (url && url.startsWith('medview://')) {
-    const route = url.substring('medview://'.length);
-    const parts = route.split('/');
-    if (parts[0] === 'share' && parts[1]) {
-      const token = parts[1];
-      mainWindow.webContents.send('open-shared-study', token);
+  if (!url || (!url.startsWith('merilview://') && !url.startsWith('medview://'))) return;
+
+  try {
+    const prefix = url.startsWith('merilview://') ? 'merilview://' : 'medview://';
+    const route = url.substring(prefix.length);
+    if (route.startsWith('share/')) {
+      const parts = route.split('/');
+      if (parts[1]) {
+        const token = parts[1].split('?')[0];
+        startupShareToken = token;
+        if (mainWindow) {
+          mainWindow.webContents.send('open-shared-study', token);
+        }
+      }
+    } else if (route.startsWith('viewer') || route.startsWith('open')) {
+      let uid = null;
+      if (route.includes('=')) {
+        try {
+          const dummy = new URL(url.replace(prefix, 'http://localhost/'));
+          uid = dummy.searchParams.get('studyInstanceUID') || dummy.searchParams.get('studyUID') || dummy.searchParams.get('studyUid');
+        } catch (e) { }
+      }
+      if (!uid) {
+        const parts = route.replace(/^\/?(viewer|open)\/?/, '').split('/');
+        if (parts[0]) {
+          uid = parts[0].split('?')[0];
+        }
+      }
+      if (uid) {
+        startupStudyUid = uid;
+        console.log(`[MerilView] Deep link resolved study UID: ${uid}`);
+        if (mainWindow) {
+          mainWindow.webContents.send('open-study', uid);
+        }
+      }
     }
+  } catch (err) {
+    console.error('[MerilView] Deep-link parsing error:', err);
   }
 }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1280,
+    height: 850,
     minWidth: 800,
     minHeight: 600,
     frame: false, // frameless window
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#0B0D10',
+    title: 'MerilView',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false, // Must be false so ipcRenderer.send() works via contextBridge preload
+      sandbox: false, // Must be false so ipcRenderer works via contextBridge preload
+      webSecurity: false,
+      allowRunningInsecureContent: true,
     },
   });
 
+  // Enable F12 DevTools and F5 Reload in development & production
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') {
+      if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+        mainWindow.webContents.toggleDevTools();
+        event.preventDefault();
+      } else if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
+        mainWindow.webContents.reload();
+        event.preventDefault();
+      }
+    }
+  });
+
+  mainWindow.webContents.on('console-message', (event, level, message) => {
+    console.log(`[Renderer] ${message}`);
+  });
+
   mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.show();
+    mainWindow.focus();
     if (startupDeepLinkUrl) {
       handleDeepLink(startupDeepLinkUrl);
       startupDeepLinkUrl = null;
     }
   });
 
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer] Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log(`[Renderer] Retrying load: ${validatedURL}`);
+        mainWindow.loadURL(validatedURL).catch(() => {});
+      }
+    }, 1500);
+  });
+
   // Load URL
-  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    // In development, load Vite local server
+  if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL(viewerDevUrl).catch(() => {
-      // If dev server hasn't started yet, try again in 1 second
       setTimeout(() => {
         mainWindow.loadURL(viewerDevUrl);
       }, 1000);
     });
-    // Open DevTools if desired in dev
-    // mainWindow.webContents.openDevTools();
+  } else if (!app.isPackaged) {
+    // In unpackaged development testing, try Vite dev server first, fall back to app://
+    mainWindow.loadURL(viewerDevUrl).catch(() => {
+      mainWindow.loadURL('app://localhost/index.html').catch(() => {
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+      });
+    });
   } else {
-    // In production, load the built html file
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // In production, load the built app via privileged protocol scheme so Web Workers, WASM and CORS work natively
+    mainWindow.loadURL('app://localhost/index.html');
   }
 
   // Monitor maximize / unmaximize events and notify renderer
@@ -120,14 +230,85 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Handle custom 'app://' protocol to serve the packaged frontend distribution
+  protocol.handle('app', async (request) => {
+    try {
+      const url = new URL(request.url);
+      let pathname = decodeURIComponent(url.pathname);
+      if (pathname === '/' || pathname === '') {
+        pathname = '/index.html';
+      }
+      let filePath = path.join(__dirname, '../dist', pathname);
+
+      // Handle WASM asset lookups across potential directories
+      if (!fs.existsSync(filePath) && pathname.endsWith('.wasm')) {
+        const wasmName = path.basename(pathname);
+        const candidates = [
+          path.join(__dirname, '../dist/wasm', wasmName),
+          path.join(__dirname, '../dist/assets/wasm', wasmName),
+          path.join(__dirname, '../dist/assets', wasmName),
+          path.join(__dirname, '../public/wasm', wasmName),
+        ];
+        for (const cand of candidates) {
+          if (fs.existsSync(cand)) {
+            filePath = cand;
+            break;
+          }
+        }
+      }
+
+      // If file does not exist, fall back to index.html for SPA client-side routing
+      if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+        filePath = path.join(__dirname, '../dist/index.html');
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.html': 'text/html; charset=UTF-8',
+        '.js': 'text/javascript; charset=UTF-8',
+        '.mjs': 'text/javascript; charset=UTF-8',
+        '.css': 'text/css; charset=UTF-8',
+        '.json': 'application/json; charset=UTF-8',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.wasm': 'application/wasm',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      const fileData = await fs.promises.readFile(filePath);
+
+      return new Response(fileData, {
+        headers: {
+          'Content-Type': contentType,
+          'Access-Control-Allow-Origin': '*',
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+      });
+    } catch (err) {
+      console.error('[Protocol app] Error handling request:', err);
+      return new Response('File not found', { status: 404 });
+    }
+  });
+
   createWindow();
+  await serviceManager.startServices();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  serviceManager.shutdown();
 });
 
 app.on('window-all-closed', () => {
@@ -211,7 +392,7 @@ ipcMain.handle('dialog-open-folder', async (event) => {
       if (stat.isDirectory()) {
         readDir(filePath);
       } else {
-        if (files.length >= 500) break;
+        if (files.length >= 5000) break;
         if (!file.startsWith('.')) {
           try {
             const data = fs.readFileSync(filePath);
@@ -278,3 +459,47 @@ ipcMain.handle('save-image-dialog', async (event, dataUrl, defaultName) => {
     throw err;
   }
 });
+
+// Unified Study Navigation IPC
+ipcMain.on('navigate-to-study', (event, studyInstanceUID) => {
+  if (mainWindow) {
+    mainWindow.webContents.send('open-study', studyInstanceUID);
+  }
+});
+
+ipcMain.handle('get-startup-study', () => {
+  const uid = startupStudyUid;
+  startupStudyUid = null; // One-shot: clear after consumption so subsequent navigations don't reload it
+  return uid;
+});
+
+ipcMain.handle('get-startup-share', () => {
+  const token = startupShareToken;
+  startupShareToken = null; // One-shot: clear after consumption
+  return token;
+});
+
+// Services Health and Lifecycle IPC
+ipcMain.handle('get-services-status', async () => {
+  return await serviceManager.getStatus();
+});
+
+ipcMain.handle('retry-services', async () => {
+  await serviceManager.startServices();
+  return await serviceManager.getStatus();
+});
+
+ipcMain.on('open-logs-folder', () => {
+  serviceManager.openLogs();
+});
+
+ipcMain.on('window-reload', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win) win.webContents.reload();
+});
+
+ipcMain.on('window-toggle-devtools', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win) win.webContents.toggleDevTools();
+});
+

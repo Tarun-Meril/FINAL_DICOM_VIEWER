@@ -7,7 +7,9 @@
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "build:all": "npm run build --prefix backend && npm run build --prefix frontend"
+    "build:all": "npm run build --prefix backend && npm run build --prefix frontend",
+    "dev:electron": "npm --prefix \"../dicom ui viewer/frontend\" run dev:electron",
+    "build:desktop": "npm --prefix \"../dicom ui viewer/frontend\" run build:desktop"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

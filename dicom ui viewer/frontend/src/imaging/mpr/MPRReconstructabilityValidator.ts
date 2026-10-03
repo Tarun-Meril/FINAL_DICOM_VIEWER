@@ -10,7 +10,7 @@
  * Engineering rationale:
  *   OHIF uses a strict gate (IOP tolerance 0.01, spacing tolerance 20%)
  *   to reject mixed-orientation series, scouts, and irregular datasets.
- *   MedView PRO now adopts the same discipline.
+ *   MerilView now adopts the same discipline.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────

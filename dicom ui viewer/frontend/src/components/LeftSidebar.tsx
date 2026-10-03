@@ -153,17 +153,17 @@ export default function LeftSidebar({ study, series, activeSeriesInstanceUid, on
   const seriesData = useMemo(() => {
     if (series && series.length > 0) {
       return series.map((s, idx) => ({
-        num: parseInt(s.seriesNumber) || (idx + 1),
-        desc: s.seriesDescription || `Series ${s.seriesNumber || (idx + 1)}`,
-        count: s.numberOfSeriesRelatedInstances || 0,
-        thickness: '1.25 mm',
-        seriesInstanceUid: s.seriesInstanceUid,
-        studyInstanceUid: s.studyInstanceUid || study?.studyInstanceUid || study?.study_instance_uid,
-        modality: s.modality || 'CT'
+        num: parseInt(s.seriesNumber || s.series_number || s.num) || (idx + 1),
+        desc: s.seriesDescription || s.series_description || s.desc || `Series ${s.seriesNumber || s.series_number || (idx + 1)}`,
+        count: s.numberOfSeriesRelatedInstances || s.number_of_series_related_instances || s.instances_count || s.number_of_instances || (s.instances ? s.instances.length : 0),
+        thickness: s.sliceThickness ? `${s.sliceThickness} mm` : '1.25 mm',
+        seriesInstanceUid: s.seriesInstanceUid || s.series_instance_uid || s.uid,
+        studyInstanceUid: s.studyInstanceUid || s.study_instance_uid || study?.studyInstanceUid || study?.study_instance_uid,
+        modality: s.modality || s.Modality || 'CT'
       }));
     }
     return [];
-  }, [series]);
+  }, [series, study]);
 
   // Filter based on search query
   const filteredSeries = seriesData.filter(s => 

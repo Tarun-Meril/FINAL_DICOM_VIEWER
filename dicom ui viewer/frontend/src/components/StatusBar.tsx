@@ -15,9 +15,10 @@ interface StatusBarProps {
   stats: ViewportStats;
   activeTool: string;
   layout: string;
+  onOpenDiagnostics?: () => void;
 }
 
-export default function StatusBar({ stats, activeTool, layout }: StatusBarProps) {
+export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics }: StatusBarProps) {
   const [statusMsg, setStatusMsg] = useState('Ready');
   const [loadingProgress, setLoadingProgress] = useState<number | null>(null);
 
@@ -137,6 +138,18 @@ export default function StatusBar({ stats, activeTool, layout }: StatusBarProps)
 
       {/* 3. RIGHT SECTION - Layout & Resolution & Hardware status space */}
       <div className="flex items-center gap-6 min-w-[280px] justify-end">
+        {/* Diagnostic & Error Finding Button */}
+        {onOpenDiagnostics && (
+          <button
+            onClick={onOpenDiagnostics}
+            title="Inspect PACS connectivity, viewport loading, and 3D VR status"
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#16181E] hover:bg-[#232732] active:bg-[#2C3240] border border-[#353D4E] text-[#B0B8C4] hover:text-white transition cursor-pointer text-[10px]"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-medium">Error Finder / Diag</span>
+          </button>
+        )}
+
         {/* Hardware Status Reserves */}
         <div className="hidden lg:flex items-center gap-2 text-[10px] text-[#555] font-mono pr-4 border-r border-[#30343A]/50">
           <span>GPU: VRAM OK</span>

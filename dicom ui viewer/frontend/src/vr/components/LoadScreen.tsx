@@ -51,13 +51,13 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
     }
   }, [s]);
 
-  const loadFromPacs = useCallback(async (studyUid: string, seriesUid?: string, apiBase = 'http://localhost:8000') => {
+  const loadFromPacs = useCallback(async (studyUid: string, seriesUid?: string, passedApiBase?: string) => {
     clearSession();
     s.setStatus('loading');
     s.setError(null);
     s.setProgress({ phase: 'extract', done: 0, total: 1, message: 'Connecting to PACS backend…' });
 
-    const fetchWithRetry = async (url: string, retries = 4, delay = 400): Promise<Response> => {
+    const fetchWithRetry = async (url: string, retries = 3, delay = 250): Promise<Response> => {
       let lastErr: any;
       for (let i = 0; i <= retries; i++) {
         try {
@@ -74,100 +74,136 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
       throw lastErr;
     };
 
+    const candidateBases = [
+      passedApiBase,
+      DEFAULT_API_BASE,
+      'http://127.0.0.1:8000',
+      'http://localhost:8000',
+      'http://127.0.0.1:3001',
+      'http://localhost:3001'
+    ].filter(Boolean) as string[];
+    const uniqueBases = [...new Set(candidateBases)];
+
+    const fetchAnyBase = async (path: string): Promise<{ res: Response; base: string }> => {
+      let lastError: any = null;
+      for (const b of uniqueBases) {
+        try {
+          const url = `${b.replace(/\/$/, '')}${path}`;
+          const res = await fetchWithRetry(url, 2, 200);
+          if (res.ok) return { res, base: b };
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      throw new Error(`PACS unreachable on all endpoints (${uniqueBases.join(', ')}): ${lastError?.message || 'Connection refused'}`);
+    };
+
     try {
       let targetSeriesUid = seriesUid;
-      if (!targetSeriesUid) {
-        const sRes = await fetchWithRetry(`${apiBase}/api/studies/${studyUid}/series`);
-        const seriesList = await sRes.json();
-        if (!seriesList || seriesList.length === 0) throw new Error('No series found in study.');
+      const { res: sRes, base: activeBase } = await fetchAnyBase(`/api/studies/${studyUid}/series`);
+      const rawSeries = await sRes.json();
+      const seriesList = Array.isArray(rawSeries) ? rawSeries : (rawSeries?.data || []);
+      if (!seriesList || seriesList.length === 0) throw new Error('No series found in study.');
 
-        // Deterministic series ranking — must match the MPR selector.
-        //
-        // `seriesList.find(modality === 'CT')` returned whichever CT series the
-        // PACS happened to list first. This scanner (Philips iDose) ships the
-        // SAME acquisition twice — a 512² and a 768² reconstruction with equal
-        // instance counts — so the volume rendered could differ between page
-        // loads, and could differ from what the 2D viewer showed.
-        //
-        // Ranking, every tie broken by a stable key:
-        //   1. reconstructable modality (CT/MR)
-        //   2. exclude secondary captures (Exam Summary / dose report)
-        //   3. more instances first
-        //   4. LOWER matrix on a tie — same anatomy, ~40% of the texture memory
-        //   5. series number, then UID
-        const isReconstructable = (x: any): boolean => {
-          const mod = String(x.modality || x.Modality || '').toUpperCase();
-          if (mod !== 'CT' && mod !== 'MR') return false;
-          const desc = String(
-            x.series_description || x.seriesDescription || x.SeriesDescription || '',
-          ).toLowerCase();
-          return !desc.includes('exam summary') && !desc.includes('dose report');
-        };
-        const countOf = (x: any) =>
-          Number(x.number_of_series_related_instances || x.numberOfSeriesRelatedInstances || x.num_instances || 0);
-        const rowsOf = (x: any) => Number(x.rows || x.Rows || 0);
-        const numOf = (x: any) => Number(x.series_number ?? x.seriesNumber ?? Number.MAX_SAFE_INTEGER);
-        const uidOf = (x: any) => String(x.series_instance_uid || x.seriesInstanceUid || '');
+      // Deterministic series ranking — must match the MPR selector.
+      const isReconstructable = (x: any): boolean => {
+        const mod = String(x.modality || x.Modality || '').toUpperCase();
+        if (mod !== 'CT' && mod !== 'MR') return false;
+        const desc = String(
+          x.series_description || x.seriesDescription || x.SeriesDescription || '',
+        ).toLowerCase();
+        return !desc.includes('exam summary') && !desc.includes('dose report');
+      };
+      const countOf = (x: any) =>
+        Number(x.number_of_series_related_instances || x.numberOfSeriesRelatedInstances || x.num_instances || 0);
+      const rowsOf = (x: any) => Number(x.rows || x.Rows || 0);
+      const numOf = (x: any) => Number(x.series_number ?? x.seriesNumber ?? Number.MAX_SAFE_INTEGER);
+      const uidOf = (x: any) => String(x.series_instance_uid || x.seriesInstanceUid || '');
 
-        const recon = seriesList.filter(isReconstructable);
-        const pool = recon.length > 0 ? recon : seriesList;
-        const ranked = [...pool].sort((a: any, b: any) => {
-          const r = Number(isReconstructable(b)) - Number(isReconstructable(a));
-          if (r !== 0) return r;
-          const c = countOf(b) - countOf(a);
-          if (c !== 0) return c;
-          const ra = rowsOf(a), rb = rowsOf(b);
-          if (ra && rb && ra !== rb) return ra - rb;
-          const n = numOf(a) - numOf(b);
-          if (n !== 0) return n;
-          return uidOf(a).localeCompare(uidOf(b));
-        });
+      const recon = seriesList.filter(isReconstructable);
+      const pool = recon.length > 0 ? recon : seriesList;
+      const ranked = [...pool].sort((a: any, b: any) => {
+        const r = Number(isReconstructable(b)) - Number(isReconstructable(a));
+        if (r !== 0) return r;
+        const c = countOf(b) - countOf(a);
+        if (c !== 0) return c;
+        const ra = rowsOf(a), rb = rowsOf(b);
+        if (ra && rb && ra !== rb) return ra - rb;
+        const n = numOf(a) - numOf(b);
+        if (n !== 0) return n;
+        return uidOf(a).localeCompare(uidOf(b));
+      });
 
+      // Verify if targetSeriesUid is valid and has > 1 instances; if not, promote to ranked[0]
+      const specifiedSeries = seriesList.find((s: any) => uidOf(s) === targetSeriesUid);
+      if (!targetSeriesUid || !specifiedSeries || countOf(specifiedSeries) <= 1) {
         targetSeriesUid = uidOf(ranked[0]);
-        if (ranked.length > 1) {
-          console.info(
-            `[VR] No series specified; auto-selected ${targetSeriesUid} ` +
-              `(series ${numOf(ranked[0])}, ${rowsOf(ranked[0]) || '?'}², ${countOf(ranked[0])} instances) ` +
-              `from ${ranked.length} candidates.`,
-          );
-        }
+        console.info(
+          `[VR] Target series promoted to volumetric ${targetSeriesUid} ` +
+            `(series ${numOf(ranked[0])}, ${rowsOf(ranked[0]) || '?'}², ${countOf(ranked[0])} instances).`
+        );
       }
       
       s.setProgress({ phase: 'extract', done: 0, total: 1, message: 'Fetching DICOM instance list…' });
-      const instRes = await fetchWithRetry(`${apiBase}/api/series/${targetSeriesUid}/instances`);
-      const instances = await instRes.json();
+      const { res: instRes } = await fetchAnyBase(`/api/series/${targetSeriesUid}/instances`);
+      const rawInst = await instRes.json();
+      const instances = Array.isArray(rawInst) ? rawInst : (rawInst?.data || []);
       if (!instances || instances.length === 0) throw new Error('No instances found for series.');
 
       const total = instances.length;
-      const payload: { path: string; buffer: ArrayBuffer }[] = [];
-      
-      for (let i = 0; i < total; i++) {
-        const inst = instances[i];
-        const sopUid = inst.sop_instance_uid || inst.sopInstanceUid || inst.instance_uid;
-        s.setProgress({ 
-          phase: 'extract', 
-          done: i, 
-          total, 
-          message: `Streaming DICOM instance ${i + 1} of ${total}…` 
-        });
-        try {
-          const fileRes = await fetchWithRetry(`${apiBase}/api/instances/${sopUid}/file`, 3, 300);
-          const buf = await fileRes.arrayBuffer();
-          payload.push({
-            path: `${sopUid}.dcm`,
-            buffer: buf,
-          });
-        } catch (fileErr) {
-          console.warn(`Could not download file for SOP ${sopUid}:`, fileErr);
-          continue;
-        }
-      }
+      const payload: { path: string; buffer: ArrayBuffer }[] = new Array(total);
+      let downloadedCount = 0;
 
-      if (payload.length === 0) throw new Error('Failed to retrieve DICOM slice data from PACS.');
+      // High performance parallel download pool (16 concurrent connections)
+      const CONCURRENCY = 16;
+      let currentIndex = 0;
+
+      const worker = async () => {
+        while (currentIndex < total) {
+          const idx = currentIndex++;
+          const inst = instances[idx];
+          const sopUid = inst.sop_instance_uid || inst.sopInstanceUid || inst.instance_uid;
+          try {
+            const fileRes = await fetchWithRetry(`${activeBase}/api/instances/${sopUid}/file`, 3, 200);
+            const buf = await fileRes.arrayBuffer();
+            payload[idx] = {
+              path: `${sopUid}.dcm`,
+              buffer: buf,
+            };
+          } catch (fileErr) {
+            // Try fallback port 3001 if main failed
+            try {
+              const fbRes = await fetchWithRetry(`http://127.0.0.1:3001/api/instances/${sopUid}/file`, 2, 200);
+              const buf = await fbRes.arrayBuffer();
+              payload[idx] = {
+                path: `${sopUid}.dcm`,
+                buffer: buf,
+              };
+            } catch (err2) {
+              console.warn(`Could not download file for SOP ${sopUid}:`, fileErr);
+            }
+          } finally {
+            downloadedCount++;
+            s.setProgress({
+              phase: 'extract',
+              done: downloadedCount,
+              total,
+              message: `Streaming DICOM instance ${downloadedCount} of ${total}…`,
+            });
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker())
+      );
+
+      const validPayload = payload.filter(Boolean);
+      if (validPayload.length === 0) throw new Error('Failed to retrieve DICOM slice data from PACS.');
 
       s.setProgress({ phase: 'extract', done: total, total, message: 'Initializing 3D volume reconstruction…' });
       const caps = probeGpu();
-      const result = await loadDataset(payload, {
+      const result = await loadDataset(validPayload, {
         onProgress: (e) => s.setProgress(e),
         maxVoxels: caps.recommendedMaxVoxels,
         maxTextureDimension: caps.max3DTextureSize,
@@ -185,15 +221,16 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
     }
   }, [s]);
 
+  const lastAttemptedStudyRef = useRef<string | null>(null);
+
   // Study identity arrives as PROPS, never from the URL.
-  //
-  // The standalone build read window.location.search here. That made the
-  // component unusable inside the main viewer, which has its own route. The
-  // /vr page now parses the query string in its wrapper and passes the values
-  // down, so this component is identical in both hosts.
   useEffect(() => {
-    if (studyUID && s.status === 'idle') {
-      loadFromPacs(studyUID, seriesUID || undefined, apiBase || DEFAULT_API_BASE);
+    if (studyUID && s.status !== 'ready' && s.status !== 'loading') {
+      if (s.status === 'idle' || lastAttemptedStudyRef.current !== `${studyUID}_${seriesUID}`) {
+        lastAttemptedStudyRef.current = `${studyUID}_${seriesUID}`;
+        s.setError(null);
+        loadFromPacs(studyUID, seriesUID || undefined, apiBase || DEFAULT_API_BASE);
+      }
     }
   }, [studyUID, seriesUID, apiBase, loadFromPacs, s.status]);
 
@@ -202,7 +239,7 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
   return (
     <div className="loadscreen">
       <div className="card">
-        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 2 }}>MedView VR</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 2 }}>MerilView VR</h1>
         <p style={{ color: 'var(--fg-2)', marginTop: 0, marginBottom: 20 }}>
           Standalone CT 3D volume visualisation engine — R&amp;D prototype
         </p>
@@ -233,6 +270,18 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
                 <button className="btn primary" onClick={() => inputRef.current?.click()}>Choose files…</button>
                 <button className="btn" onClick={() => dirRef.current?.click()}>Choose folder…</button>
+                {studyUID && (
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      s.setError(null);
+                      s.setStatus('idle');
+                      loadFromPacs(studyUID, seriesUID || undefined, apiBase || DEFAULT_API_BASE);
+                    }}
+                  >
+                    Load From PACS
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -250,6 +299,20 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
             <b>{s.error.message}</b>
             {s.error.detail && <div style={{ marginTop: 6, color: 'var(--fg-2)', fontSize: 10, fontFamily: 'var(--mono)' }}>{s.error.detail}</div>}
             {s.error.code && <div style={{ marginTop: 4, color: 'var(--fg-2)', fontSize: 10 }}>code: {s.error.code}</div>}
+            {studyUID && (
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button
+                  className="btn primary"
+                  onClick={() => {
+                    s.setError(null);
+                    s.setStatus('idle');
+                    loadFromPacs(studyUID, seriesUID || undefined, apiBase || DEFAULT_API_BASE);
+                  }}
+                >
+                  Retry Loading PACS Volume
+                </button>
+              </div>
+            )}
           </div>
         )}
 

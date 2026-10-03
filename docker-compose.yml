@@ -45,7 +45,7 @@ services:
       - "8042:8042"
       - "4242:4242"
     environment:
-      ORTHANC_JSON: '{"Name": "MedView Orthanc Server", "DICOMWeb": {"Enable": true, "URL": "/dicom-web/"}}'
+      ORTHANC_JSON: '{"Name": "MerilView Orthanc Server", "DICOMWeb": {"Enable": true, "URL": "/dicom-web/"}}'
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null --user=orthanc --password=orthanc http://localhost:8042/system || exit 1"]
       interval: 5s
@@ -62,6 +62,8 @@ services:
     container_name: medview_backend
     volumes:
       - ./dicom ui viewer/backend:/workspace
+      - ./pacs-study-browser/backend/data/instances:/workspace/pacs_data:ro
+      - ./pacs-study-browser/backend/data/db.json:/workspace/pacs_data/db.json:ro
     env_file:
       - ./dicom ui viewer/backend/.env.production
     ports:
@@ -85,6 +87,8 @@ services:
     container_name: medview_celery_worker
     volumes:
       - ./dicom ui viewer/backend:/workspace
+      - ./pacs-study-browser/backend/data/instances:/workspace/pacs_data:ro
+      - ./pacs-study-browser/backend/data/db.json:/workspace/pacs_data/db.json:ro
     env_file:
       - ./dicom ui viewer/backend/.env.production
     command: celery -A app.worker worker --loglevel=info -Q default,thumbnail_queue,ai_queue,upload_queue,export_queue
@@ -118,7 +122,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   # -------------------------------------------------------------
-  # MedView PRO DICOM Viewer Frontend (Port 5174 / 3000)
+  # MerilView DICOM Viewer Frontend (Port 5174 / 3000)
   # -------------------------------------------------------------
   web-frontend:
     build:

@@ -4,16 +4,29 @@ import { ENV } from '../../config/env';
 
 export type LogCategory = 'application' | 'share' | 'auth' | 'api' | 'error' | 'audit';
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-
 class StructuredLogger {
-  private logDir = path.join(__dirname, '../../../logs');
+  private logDir = ENV.LOG_DIR || path.join(__dirname, '../../../logs');
   private logLevel = ENV.LOG_LEVEL.toUpperCase();
 
   constructor() {
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+    try {
+      if (!fs.existsSync(this.logDir)) {
+        fs.mkdirSync(this.logDir, { recursive: true });
+      }
+      this.cleanOldLogs();
+    } catch (err) {
+      console.warn(`[StructuredLogger] Failed to initialize log directory (${this.logDir}):`, err);
+      try {
+        const os = require('os');
+        const fallback = path.join(os.tmpdir(), 'merilview-logs');
+        if (!fs.existsSync(fallback)) {
+          fs.mkdirSync(fallback, { recursive: true });
+        }
+        this.logDir = fallback;
+      } catch (fallbackErr) {
+        console.warn('[StructuredLogger] Fallback log directory failed; running with console logging only:', fallbackErr);
+      }
     }
-    this.cleanOldLogs();
   }
 
   private getLogFilePath(category: LogCategory): string {

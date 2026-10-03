@@ -124,7 +124,7 @@ export function LoadScreen(): JSX.Element {
   return (
     <div className="loadscreen">
       <div className="card">
-        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 2 }}>MedView VR</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 2 }}>MerilView VR</h1>
         <p style={{ color: 'var(--fg-2)', marginTop: 0, marginBottom: 20 }}>
           Standalone CT 3D volume visualisation engine — R&amp;D prototype
         </p>

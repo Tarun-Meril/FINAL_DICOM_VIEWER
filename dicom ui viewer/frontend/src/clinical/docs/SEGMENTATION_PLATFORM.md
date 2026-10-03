@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise Segmentation, Surface Modeling & Quantification Platform (Phase 22)
+# MerilView — Enterprise Segmentation, Surface Modeling & Quantification Platform (Phase 22)
 
 ## Overview
 Phase 22 introduces a clinical segmentation, surface extraction (Marching Cubes & Flying Edges), label map management, mesh exporter (STL, OBJ, PLY, GLTF), and quantitative analysis platform in `frontend/src/clinical/segmentation/`.

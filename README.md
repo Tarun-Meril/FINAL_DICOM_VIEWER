@@ -15,32 +15,32 @@ The workspace consists of 5 modular subsystems engineered for high diagnostic pe
                               └─────────────────┬─────────────────┘
                                                 │ DICOMweb / C-STORE
     ┌──────────────────────────┐                ▼                ┌──────────────────────────┐
-    │    PACS Study Browser    │ ◄─────────────────────────────► │   MedView PRO Backend    │
+    │    PACS Study Browser    │ ◄─────────────────────────────► │    MerilView Backend     │
     │  Web: 3005 | API: 3001   │     Study Selection & Launch    │  FastAPI (Port 8000)     │
     └─────────────┬────────────┘                                 └─────────────┬────────────┘
                   │                                                            │
                   ▼                                                            ▼
     ┌──────────────────────────┐                                 ┌──────────────────────────┐
-    │   MedView PRO Viewer     │                                 │   Database & Task Hub    │
+    │     MerilView Viewer     │                                 │   Database & Task Hub    │
     │  React 19 / Cornerstone  │                                 │ PostgreSQL: 5432         │
     │  (Port 5174 / Desktop)   │                                 │ Redis: 6379 | Celery     │
     └──────┬────────────┬──────┘                                 └──────────────────────────┘
            │            │
            ▼            ▼
 ┌──────────────────┐ ┌──────────────────┐
-│  MedView VR 3D   │ │  Standalone MPR  │
+│   MerilView 3D   │ │  Standalone MPR  │
 │  VTK.js Raycast  │ │  Cornerstone3D   │
 │   (Port 5173)    │ │   (Port 5176)    │
 └──────────────────┘ └──────────────────┘
 ```
 
-1. **[MedView PRO Diagnostic Viewer](dicom%20ui%20viewer/frontend/)** (`Port 5174`)
+1. **[MerilView Diagnostic Viewer](dicom%20ui%20viewer/frontend/)** (`Port 5174`)
    - Next-generation diagnostic workstation built with React 19, Vite, and CornerstoneJS 4.x.
    - Client-side WebAssembly decoders for high-speed JPEG-LS, JPEG 2000, and HTJ2K decompression.
    - Desktop application mode packaged via Electron with custom frameless window controls.
    - Dynamic layouts, interactive measurement overlays, Cobb angles, hanging protocols, and synchronized cine playback.
 
-2. **[MedView PRO Backend Service](dicom%20ui%20viewer/backend/)** (`Port 8000`)
+2. **[MerilView Backend Service](dicom%20ui%20viewer/backend/)** (`Port 8000`)
    - High-throughput asynchronous FastAPI gateway.
    - Real-time WebSocket synchronization for collaborative diagnostic sessions.
    - PostgreSQL 16 persistence for user sessions, measurement state, annotations, and AI findings.
@@ -50,9 +50,9 @@ The workspace consists of 5 modular subsystems engineered for high diagnostic pe
    - Standalone PACS registry and study management portal.
    - Multi-field filtering (Patient Name, ID, Accession Number, Modality, Date ranges).
    - Drag-and-drop DICOM ingestion with automatic header extraction (`dicom-parser`).
-   - Seamless one-click deep link launch into the MedView PRO viewer.
+   - Seamless one-click deep link launch into the MerilView viewer.
 
-4. **[MedView VR Engine](medview-vr/)** (`Port 5173`)
+4. **[MerilView VR Engine](medview-vr/)** (`Port 5173`)
    - GPU-accelerated ray-cast 3D volume rendering built on VTK.js and WebGL 2.
    - Complete Hounsfield Unit (HU) modality LUT mapping with dataset-adaptive presets (Bone, Soft Tissue, Angio, Lung, MIP/MinIP).
    - Real-time multi-planar clipping slabs, 3D segmentation sculpting, and surface area/volume calculations.
@@ -76,15 +76,15 @@ The workspace consists of 5 modular subsystems engineered for high diagnostic pe
 Run the unified npm scripts directly from the workspace root:
 
 ```powershell
-# Run PACS Study Browser (3005/3001) & MedView PRO Viewer (5174) concurrently
+# Run PACS Study Browser (3005/3001) & MerilView Viewer (5174) concurrently
 npm run dev
 
 # Run individual components
-npm run dev:viewer       # MedView PRO Viewer (Port 5174)
+npm run dev:viewer       # MerilView Viewer (Port 5174)
 npm run dev:pacs         # PACS Study Browser (Ports 3005 / 3001)
-npm run dev:vr           # MedView VR 3D Volume Engine (Port 5173)
+npm run dev:vr           # MerilView VR 3D Volume Engine (Port 5173)
 npm run dev:mpr          # Standalone 2D MPR Engine (Port 5176)
-npm run dev:electron     # Launch MedView PRO in native Electron Desktop shell
+npm run dev:electron     # Launch MerilView in native Electron Desktop shell
 ```
 
 In a separate terminal, launch the Python backend:

@@ -76,7 +76,7 @@ export const App: React.FC = () => {
   };
 
   const launchViewerTab = useCallback((studyUid: string, _seriesUid?: string) => {
-    const targetUrl = `${VIEWER_BASE_URL}/viewer/${studyUid}`;
+    const targetUrl = `${VIEWER_BASE_URL}/#/viewer/${encodeURIComponent(studyUid)}`;
     console.log(`[PACS] Opening DICOM Viewer for StudyUID ${studyUid} at ${targetUrl}`);
     try {
       window.open(targetUrl, '_blank', 'noopener,noreferrer');
@@ -107,7 +107,7 @@ export const App: React.FC = () => {
 
   const handleOpenViewer = (studyUid: string, seriesUid?: string) => {
     if (!studyUid) return;
-    const targetUrl = `${VIEWER_BASE_URL}/viewer/${studyUid}`;
+    const targetUrl = `${VIEWER_BASE_URL}/#/viewer/${encodeURIComponent(studyUid)}`;
     console.log(`[PACS] Opening DICOM Viewer for StudyUID ${studyUid} at ${targetUrl}`);
 
     // Synchronously open viewer tab
@@ -119,10 +119,11 @@ export const App: React.FC = () => {
 
     // Asynchronously notify backend selection endpoint
     try {
+      const currentStudy = studies.find(s => s.studyInstanceUid === studyUid);
       const payload = {
         studyInstanceUID: studyUid,
-        patientId: selectedStudy?.patientId || '',
-        accessionNumber: selectedStudy?.accessionNumber || '',
+        patientId: currentStudy?.patientId || selectedStudy?.patientId || '',
+        accessionNumber: currentStudy?.accessionNumber || selectedStudy?.accessionNumber || '',
         seriesUIDs: seriesUid ? [seriesUid] : [],
         timestamp: Date.now()
       };

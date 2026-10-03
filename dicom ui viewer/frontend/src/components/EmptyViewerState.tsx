@@ -3,9 +3,10 @@ import { Database, FolderOpen, RefreshCcw, HardDrive } from 'lucide-react';
 
 interface EmptyViewerStateProps {
   onLoadSample: () => void;
+  onNavigateToPacs?: () => void;
 }
 
-export default function EmptyViewerState({ onLoadSample }: EmptyViewerStateProps) {
+export default function EmptyViewerState({ onLoadSample, onNavigateToPacs }: EmptyViewerStateProps) {
   return (
     <div className="flex flex-col items-center justify-center flex-1 h-full bg-[#000000] text-[#A8A8A8] font-sans p-6 select-none border border-[#1F232A]">
       
@@ -46,7 +47,7 @@ export default function EmptyViewerState({ onLoadSample }: EmptyViewerStateProps
         </button>
 
         <button
-          onClick={onLoadSample}
+          onClick={onNavigateToPacs || onLoadSample}
           className="flex items-center gap-2 px-4 py-2 bg-[#252B34] border border-[#353C48] rounded-[4px] text-[12px] font-medium text-white hover:bg-[#2A323D] hover:border-[#4B5563] cursor-pointer transition-all duration-150 outline-none"
         >
           <HardDrive className="w-4 h-4 text-[#3B82F6]" />

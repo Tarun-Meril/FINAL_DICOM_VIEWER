@@ -1,6 +1,6 @@
-# MedView PRO DICOM Workstation - Architecture & Data Flow
+# MerilView DICOM Workstation - Architecture & Data Flow
 
-This document details the system architecture, component integrations, imaging pipelines, and real-time data flows across the MedView PRO DICOM Workstation.
+This document details the system architecture, component integrations, imaging pipelines, and real-time data flows across the MerilView DICOM Workstation.
 
 ---
 
@@ -17,7 +17,7 @@ This document details the system architecture, component integrations, imaging p
                                              │
                                              ▼
 ┌──────────────────────────────┐          ┌───────────────────────────────────────────┐
-│     PACS Study Browser       │          │          MedView PRO Backend              │
+│     PACS Study Browser       │          │             MerilView Backend             │
 │  - Frontend UI (Port 3005)   │ ◄──────► │  - FastAPI ASGI Framework (Port 8000)     │
 │  - Express API (Port 3001)   │          │  - WebSocket Real-Time Synchronization    │
 │  - Flat JSON Store & Ingest  │          │  - Pydicom Metadata & Slicing Proxy       │
@@ -36,7 +36,7 @@ This document details the system architecture, component integrations, imaging p
                                                     │
                                                     ▼
              ┌──────────────────────────────────────────────────────────────┐
-             │            MedView PRO Diagnostic Client (Port 5174)         │
+             │               MerilView Diagnostic Client (Port 5174)        │
              │                                                              │
              │   ┌──────────────────────┐        ┌──────────────────────┐   │
              │   │ React 19 Frontend UI │        │ Electron Native Host │   │
@@ -56,7 +56,7 @@ This document details the system architecture, component integrations, imaging p
                             │                           │
                             ▼                           ▼
              ┌─────────────────────────────┐ ┌─────────────────────────────┐
-             │       MedView VR 3D         │ │     Standalone 2D MPR       │
+             │        MerilView 3D         │ │     Standalone 2D MPR       │
              │  - VTK.js Raycast Volume    │ │  - Cornerstone3D Reslicing  │
              │  - GPU Shaders & Transfers  │ │  - SharedArrayBuffer / COOP │
              │  - WebGL 2 (Port 5173)      │ │  - Crosshairs (Port 5176)   │
@@ -67,7 +67,7 @@ This document details the system architecture, component integrations, imaging p
 
 ## 2. Core Subsystems
 
-### A. MedView PRO Diagnostic Viewer (`Port 5174`)
+### A. MerilView Diagnostic Viewer (`Port 5174`)
 * **Primary Rendering Engine**: Implements CornerstoneJS 4.x with hardware-accelerated canvas overlays.
 * **Client-Side Decoding**: Uses WebAssembly (WASM) decoders running in dedicated Web Workers:
   * `@cornerstonejs/codec-libjpeg-turbo-8bit` for baseline lossy/lossless JPEG.
@@ -79,7 +79,7 @@ This document details the system architecture, component integrations, imaging p
   * RECIST 1.1 tumor tracking and longest-diameter calculation.
   * Multi-point calibration against embedded DICOM pixel spacing (`(0028,0030)`).
 
-### B. MedView PRO Backend Service (`Port 8000`)
+### B. MerilView Backend Service (`Port 8000`)
 * **FastAPI Asynchronous Gateway**: Exposes comprehensive REST endpoints with automated OpenAPI / Swagger documentation (`/docs`).
 * **WebSocket Collaboration Hub (`/ws/viewer` & `/ws/session`)**: Broadcasters synchronized viewport states (active slice index, pan offsets, zoom factor, window width/level) to peer clinicians in real time.
 * **Celery Background Workers**: Offloads CPU-intensive operations (ZIP archive exports, thumbnail generation, and asynchronous AI inference pipelines) to Redis queues.
@@ -88,9 +88,9 @@ This document details the system architecture, component integrations, imaging p
 ### C. PACS Study Browser (`Frontend: 3005 | Backend: 3001`)
 * Simulates an enterprise PACS archive, exposing REST endpoints for study discovery and metadata inspection.
 * Automatically parses uploaded `.dcm` files with `dicom-parser` and records study, series, and instance metadata in a persistent store.
-* Provides a 1-click deep link launch into MedView PRO using the pattern: `http://localhost:5174/viewer/{studyInstanceUid}`.
+* Provides a 1-click deep link launch into MerilView using the pattern: `http://localhost:5174/viewer/{studyInstanceUid}`.
 
-### D. MedView VR Engine (`Port 5173`)
+### D. MerilView VR Engine (`Port 5173`)
 * Standalone 3D Volume Rendering engine utilizing VTK.js and WebGL 2 ray-casting shaders.
 * Computes correct physical voxel grids in Patient Coordinate Space (LPS) using DICOM `ImagePositionPatient` and `ImageOrientationPatient`.
 * Features customizable transfer function presets (Bone, Soft Tissue, Angiography, Lung, MIP/MinIP), 6-plane clipping slabs, and 3D sculpting tools.
@@ -106,7 +106,7 @@ This document details the system architecture, component integrations, imaging p
 ### Workflow 1: Study Ingestion & Retrieval
 1. DICOM studies arrive via DICOM C-STORE into Orthanc (`Port 4242`) or are uploaded to the PACS Study Browser (`Port 3005/3001`).
 2. The clinician selects a study in the PACS Browser or opens a direct URL (`/viewer/{studyUid}`).
-3. The MedView PRO frontend queries the backend API (`/api/studies/{studyUid}/series`) for study structure and series metadata.
+3. The MerilView frontend queries the backend API (`/api/studies/{studyUid}/series`) for study structure and series metadata.
 4. The series filmstrip loads preview thumbnails, allowing instant series switching.
 
 ### Workflow 2: High-Performance Image Streaming

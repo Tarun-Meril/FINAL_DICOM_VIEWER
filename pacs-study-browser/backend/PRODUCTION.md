@@ -1,6 +1,6 @@
-# MedView Pro - Production Deployment & Hardening Guide
+# MerilView - Production Deployment & Hardening Guide
 
-This document provides deployment guidelines, system configuration specifications, security policies, backup routines, and architecture specifications for hospital LAN, VPN, and enterprise installations of MedView Pro.
+This document provides deployment guidelines, system configuration specifications, security policies, backup routines, and architecture specifications for hospital LAN, VPN, and enterprise installations of MerilView.
 
 ---
 

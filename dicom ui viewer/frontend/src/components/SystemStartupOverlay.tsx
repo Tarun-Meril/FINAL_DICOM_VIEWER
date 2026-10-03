@@ -209,7 +209,7 @@ export default function SystemStartupOverlay({ onComplete }: SystemStartupOverla
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isError ? 'bg-rose-400' : 'bg-indigo-400'}`}></span>
               <span className={`relative inline-flex rounded-full h-3 w-3 ${isError ? 'bg-rose-500' : 'bg-indigo-500'}`}></span>
             </span>
-            <span className="text-[14px] font-bold text-white tracking-wide uppercase">MedView PRO</span>
+            <span className="text-[14px] font-bold text-white tracking-wide uppercase">MerilView</span>
           </div>
           <div className="text-[11px] text-[#80808a] font-mono-numbers">
             v1.0.0 • Diagnostic Environment Setup

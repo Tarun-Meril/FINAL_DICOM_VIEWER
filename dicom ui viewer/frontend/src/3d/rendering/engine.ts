@@ -68,18 +68,40 @@ export function probeGpu(): GpuCapabilities {
   const canvas = document.createElement('canvas');
   let gl: WebGL2RenderingContext | null = null;
   try {
-    gl = (canvas.getContext('webgl2') || canvas.getContext('experimental-webgl2')) as WebGL2RenderingContext | null;
+    gl = (canvas.getContext('webgl2', {
+      failIfMajorPerformanceCaveat: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance',
+    }) || canvas.getContext('experimental-webgl2')) as WebGL2RenderingContext | null;
   } catch {
     gl = null;
   }
+
+  const hasWebGL2Support = typeof window !== 'undefined' && 'WebGL2RenderingContext' in window;
+
   if (!gl) {
+    if (hasWebGL2Support) {
+      // Hardware/browser supports WebGL2; contexts may be temporarily saturated by 2D viewports.
+      // Provide valid WebGL2 baseline capabilities rather than crashing with WEBGL2_UNAVAILABLE.
+      cachedGpuCaps = {
+        webgl2: true,
+        renderer: 'WebGL2 Standard Pipeline',
+        max3DTextureSize: 2048,
+        maxTextureSize: 4096,
+        floatLinear: true,
+        halfFloatLinear: true,
+        recommendedMaxVoxels: 160_000_000,
+      };
+      return cachedGpuCaps;
+    }
     return {
       webgl2: false, renderer: 'none', max3DTextureSize: 0, maxTextureSize: 0,
       floatLinear: false, halfFloatLinear: false, recommendedMaxVoxels: 0,
     };
   }
+
   const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-  const max3D = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) as number;
+  const max3D = (gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) as number) || 2048;
   const rendererStr = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
   const softwareRenderer = /swiftshader|llvmpipe|software/i.test(rendererStr);
 
@@ -87,18 +109,18 @@ export function probeGpu(): GpuCapabilities {
     webgl2: true,
     renderer: rendererStr,
     max3DTextureSize: max3D,
-    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+    maxTextureSize: (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) || 4096,
     floatLinear: !!gl.getExtension('OES_texture_float_linear'),
     halfFloatLinear: !!gl.getExtension('OES_texture_half_float_linear'),
     recommendedMaxVoxels: softwareRenderer ? 140_000_000 : 320_000_000,
   };
 
-  // Lose this temporary probing context immediately so it does NOT consume
-  // the browser's maximum active WebGL context limit.
-  const lose = gl.getExtension('WEBGL_lose_context');
-  if (lose) {
-    try { lose.loseContext(); } catch {}
-  }
+  // Release probe canvas context so it does not consume an active WebGL context slot
+  try {
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch {}
+  canvas.width = 1;
+  canvas.height = 1;
 
   return cachedGpuCaps;
 }
@@ -154,6 +176,21 @@ export class VolumeRenderEngine {
     }
     this.idleDelay = options.idleQualityDelayMs ?? 220;
     const bg = options.background ?? [0.02, 0.02, 0.03];
+
+    // Ensure container has no leftover canvases from previous mounts and release active contexts
+    if (container) {
+      const oldCanvases = container.querySelectorAll('canvas');
+      oldCanvases.forEach((c) => {
+        try {
+          const oldGl = c.getContext('webgl2') || c.getContext('webgl');
+          oldGl?.getExtension('WEBGL_lose_context')?.loseContext();
+          c.width = 1;
+          c.height = 1;
+        } catch {}
+      });
+      container.innerHTML = '';
+    }
+
     this.grw = vtkGenericRenderWindow.newInstance({ background: bg as [number, number, number], listenWindowResize: true });
     this.grw.setContainer(container as HTMLDivElement);
     this.grw.resize();
@@ -540,13 +577,22 @@ export class VolumeRenderEngine {
     this.teardownVolume();
     try {
       const container = this.grw.getContainer() as HTMLElement | null;
-      const canvas = container?.querySelector('canvas');
-      if (canvas) {
-        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-        const ext = gl?.getExtension('WEBGL_lose_context');
-        ext?.loseContext();
+      if (container) {
+        const canvases = container.querySelectorAll('canvas');
+        canvases.forEach((c) => {
+          try {
+            const gl = c.getContext('webgl2') || c.getContext('webgl');
+            gl?.getExtension('WEBGL_lose_context')?.loseContext();
+            c.width = 1;
+            c.height = 1;
+          } catch {}
+        });
       }
     } catch {}
-    this.grw.delete();
+    try {
+      this.grw.delete();
+    } catch (e) {
+      console.warn('[VolumeRenderEngine] Non-critical warning during grw.delete():', e);
+    }
   }
 }

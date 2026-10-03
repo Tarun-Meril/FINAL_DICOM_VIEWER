@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise Clinical Intelligence & Decision Support Platform (Phase 23.5)
+# MerilView — Enterprise Clinical Intelligence & Decision Support Platform (Phase 23.5)
 
 ## Overview
 Phase 23.5 introduces an Enterprise Clinical Intelligence layer under `frontend/src/clinical/intelligence/` responsible for quantitative Biomarkers, Clinical Decision Support, RADS Scoring (CAD-RADS, Lung-RADS, PI-RADS, LI-RADS, BI-RADS), Confidence Management, Decision Explainability, Study Quality Assessment, and Automated Clinical Summary generation.

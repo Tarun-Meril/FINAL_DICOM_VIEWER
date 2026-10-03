@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise AI Data Pipeline & Model Infrastructure (Phase 23.75)
+# MerilView — Enterprise AI Data Pipeline & Model Infrastructure (Phase 23.75)
 
 ## Overview
 Phase 23.75 establishes a model-agnostic Enterprise AI Data Pipeline and Model Execution Infrastructure under `frontend/src/clinical/ai/` supporting MONAI, ONNX Runtime, TensorFlow.js, and PyTorch deep learning models.

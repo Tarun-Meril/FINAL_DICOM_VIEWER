@@ -1,5 +1,5 @@
 /**
- * Public Facade API for MedView PRO Medical Imaging Workstation Engine
+ * Public Facade API for MerilView Medical Imaging Workstation Engine
  */
 
 import {

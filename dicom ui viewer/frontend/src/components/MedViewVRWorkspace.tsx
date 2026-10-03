@@ -64,7 +64,7 @@ export const MedViewVRWorkspace: React.FC<MedViewVRWorkspaceProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#1C2230] border border-[#2B354D] text-[#4A90E2] font-semibold tracking-wide uppercase text-[10px]">
             <Eye className="w-3.5 h-3.5" />
-            <span>MedView VR Engine</span>
+            <span>MerilView VR Engine</span>
           </div>
 
           <div className="text-[#8E99A8] flex items-center gap-2">
@@ -126,7 +126,7 @@ export const MedViewVRWorkspace: React.FC<MedViewVRWorkspaceProps> = ({
         <iframe
           key={iframeKey}
           src={vrUrl}
-          title="MedView VR 3D Volume Visualization"
+          title="MerilView VR 3D Volume Visualization"
           className="w-full h-full border-0 block"
           allow="fullscreen"
         />

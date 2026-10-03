@@ -1,6 +1,6 @@
 # PACS Study Browser
 
-A standalone, self-contained PACS Study Browser application designed for study management, querying, importing, and exporting DICOM studies. This application is decoupled from the MedView PRO DICOM Viewer, allowing independent development and deployment, while maintaining seamless integration through URL-based launching.
+A standalone, self-contained PACS Study Browser application designed for study management, querying, importing, and exporting DICOM studies. This application is decoupled from the MerilView DICOM Viewer, allowing independent development and deployment, while maintaining seamless integration through URL-based launching.
 
 ---
 
@@ -10,7 +10,7 @@ A standalone, self-contained PACS Study Browser application designed for study m
 - **Query & Filters**: Advanced search by Patient Name, Patient ID, Accession Number, Modalities, and Study Date/Range.
 - **DICOM Import**: Drag-and-drop or file upload zone for importing local `.dcm` files with automatic metadata extraction.
 - **DICOM Export**: Option to download raw DICOM instance files directly.
-- **Viewer Integration**: A "View" action that launches the MedView PRO DICOM Viewer in a separate browser tab using the study's unique identifier.
+- **Viewer Integration**: A "View" action that launches the MerilView DICOM Viewer in a separate browser tab using the study's unique identifier.
 
 ---
 
@@ -65,10 +65,10 @@ npm run dev:backend    # Starts Express on port 3001
 
 ---
 
-## Integration with MedView PRO DICOM Viewer
+## Integration with MerilView DICOM Viewer
 
-The PACS Study Browser integrates with the MedView PRO DICOM Viewer via URL routing. When a user clicks the **View** button on a study:
+The PACS Study Browser integrates with the MerilView DICOM Viewer via URL routing. When a user clicks the **View** button on a study:
 1. The browser opens a new tab to:
    * **Development**: `http://localhost:5174/viewer/{studyInstanceUid}`
    * **Production Container**: `http://localhost:3000/viewer/{studyInstanceUid}`
-2. MedView PRO intercepts the route and loads the study directly from its configured DICOMweb data source.
+2. MerilView intercepts the route and loads the study directly from its configured DICOMweb data source.

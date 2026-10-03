@@ -22,19 +22,22 @@ export class HealthController {
     }
 
     // 2. Verify Supabase Cloud connection status
-    let supabaseStatus = 'offline';
-    try {
-      const { error } = await supabase
-        .from('share_links')
-        .select('id')
-        .limit(1);
-      if (!error) {
-        supabaseStatus = 'online';
-      } else {
-        supabaseStatus = `offline: ${error.message}`;
+    let supabaseStatus = 'not configured';
+    if (ENV.SUPABASE.URL && !ENV.SUPABASE.URL.includes('placeholder')) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500));
+        const checkPromise = supabase.from('share_links').select('id').limit(1);
+        const result = await Promise.race([checkPromise, timeoutPromise]) as any;
+        if (!result.error) {
+          supabaseStatus = 'online';
+        } else {
+          supabaseStatus = `offline: ${result.error.message}`;
+        }
+      } catch (err: any) {
+        supabaseStatus = `offline: ${err.message || err}`;
       }
-    } catch (err: any) {
-      supabaseStatus = `offline: ${err.message || err}`;
+    } else {
+      supabaseStatus = 'local mode (unconfigured)';
     }
 
     // 3. Verify DICOM Upload directory file write access permissions

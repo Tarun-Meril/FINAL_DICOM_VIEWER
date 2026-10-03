@@ -75,9 +75,13 @@ export default function MainViewer({
         window.dispatchEvent(new Event('resize'));
         try {
           const re = getRenderingEngine('medview-rendering-engine');
-          if (re) {
-            re.resize(true, true);
-            re.render();
+          if (re && !re.hasBeenDestroyed && re.getViewports().length > 0) {
+            try {
+              re.resize(false, false);
+              re.render();
+            } catch {
+              // Ignore transient viewport resize errors while switching modes
+            }
           }
         } catch (err) {
           console.warn('[MainViewer] Failed to refresh rendering engine on 2D return:', err);
@@ -87,17 +91,25 @@ export default function MainViewer({
     }
   }, [vizMode]);
 
-  const activeSeriesMatchesStudy = Boolean(
-    activeStats?.seriesInstanceUid &&
-    series?.some((s) => (s.seriesInstanceUid || s.series_instance_uid) === activeStats.seriesInstanceUid)
+  const getSeriesCount = (s: any): number =>
+    Number(s?.numberOfSeriesRelatedInstances || s?.number_of_series_related_instances || s?.num_instances || 0);
+
+  const activeSeriesObj = series?.find(
+    (s) => (s.seriesInstanceUid || s.series_instance_uid) === activeStats?.seriesInstanceUid
   );
 
+  // Find volumetric series (>1 slice), sorted by instance count descending
+  const sortedVolumetric = [...(series || [])].sort((a, b) => getSeriesCount(b) - getSeriesCount(a));
+
+  // If the currently viewed series has multiple slices, use it; otherwise auto-promote to the main volumetric CT series
+  const chosenSeries = (activeSeriesObj && getSeriesCount(activeSeriesObj) > 1)
+    ? activeSeriesObj
+    : (sortedVolumetric[0] || activeSeriesObj);
+
   const mprSeriesUid: string | undefined =
-    activeSeriesMatchesStudy
-      ? activeStats.seriesInstanceUid
-      : (series && series.length > 0
-        ? series[0]?.seriesInstanceUid || series[0]?.series_instance_uid
-        : undefined);
+    chosenSeries
+      ? (chosenSeries.seriesInstanceUid || chosenSeries.series_instance_uid)
+      : undefined;
 
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -281,26 +293,24 @@ export default function MainViewer({
                 width: '100%',
                 height: '100%',
               } : {
-                position: 'absolute',
-                inset: 0,
-                visibility: 'hidden',
-                pointerEvents: 'none',
-                zIndex: -10,
+                display: 'none',
               }}
             >
-              <ViewportGrid 
-                layout={layout} 
-                activeTool={activeTool}
-                vizMode={vizMode}
-                viewportCommand={viewportCommand}
-                onActiveViewportChange={onActiveViewportChange}
-                onStatsChange={onStatsChange}
-                study={study}
-                metadataOverlayOpen={metadataOverlayOpen}
-                onActionCommand={onActionCommand}
-                readOnly={readOnly}
-                sharePermissions={sharePermissions}
-              />
+              {(vizMode === '2d' || vizMode === 'mip') && (
+                <ViewportGrid 
+                  layout={layout} 
+                  activeTool={activeTool}
+                  vizMode={vizMode}
+                  viewportCommand={viewportCommand}
+                  onActiveViewportChange={onActiveViewportChange}
+                  onStatsChange={onStatsChange}
+                  study={study}
+                  metadataOverlayOpen={metadataOverlayOpen}
+                  onActionCommand={onActionCommand}
+                  readOnly={readOnly}
+                  sharePermissions={sharePermissions}
+                />
+              )}
             </div>
 
             {/* 3D Visualizer Overlays */}
@@ -312,6 +322,7 @@ export default function MainViewer({
                 <VRViewerCore
                   studyUID={study?.studyInstanceUid || study?.study_instance_uid}
                   seriesUID={mprSeriesUid}
+                  apiBase={API_BASE_URL}
                   onClose={() => onActionCommand?.('vr')}
                   variant="embedded"
                 />
@@ -341,7 +352,10 @@ export default function MainViewer({
         </div>
       ) : (
         /* EMPTY STATE */
-        <EmptyViewerState onLoadSample={() => simulateLoadingStudy()} />
+        <EmptyViewerState 
+          onLoadSample={() => onActionCommand ? onActionCommand('loadDefaultStudy') : simulateLoadingStudy()}
+          onNavigateToPacs={() => onActionCommand ? onActionCommand('openPacs') : undefined}
+        />
       )}
 
       {/* Progress loader overlays */}

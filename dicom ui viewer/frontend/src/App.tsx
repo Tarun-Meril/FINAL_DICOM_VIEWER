@@ -9,15 +9,30 @@ import SystemStartupOverlay from './components/SystemStartupOverlay';
 import ShareDialog from './components/ShareDialog';
 import ManageSharesDialog from './components/ManageSharesDialog';
 import PasswordPrompt from './components/PasswordPrompt';
+import ErrorFindingModal from './components/ErrorFindingModal';
 import { API_BASE_URL } from './config';
 import { clinicalFacade } from './clinical';
 const SHARE_API_BASE_URL = import.meta.env.VITE_SHARE_API_BASE_URL || 'http://localhost:3001';
+
+export interface AppProps {
+  initialStudyUid?: string;
+  onNavigateToPacs?: () => void;
+}
 
 const getShareTokenFromUrl = () => {
   // Try pathname: /share/{token}
   const pathParts = window.location.pathname.split('/');
   const shareIndex = pathParts.indexOf('share');
   let token = shareIndex !== -1 && pathParts[shareIndex + 1] ? pathParts[shareIndex + 1] : null;
+
+  // Try hash: #/share/{token}
+  if (!token && window.location.hash) {
+    const hashParts = window.location.hash.split('/');
+    const hShareIndex = hashParts.indexOf('share');
+    if (hShareIndex !== -1 && hashParts[hShareIndex + 1]) {
+      token = hashParts[hShareIndex + 1].split('?')[0];
+    }
+  }
 
   // Try query parameters: ?shareToken=xxx or ?token=xxx
   if (!token) {
@@ -28,6 +43,16 @@ const getShareTokenFromUrl = () => {
 };
 
 const getStudyUidFromUrl = () => {
+  // Try hash: #/viewer/{studyUid}
+  const hash = window.location.hash;
+  if (hash === '#/pacs' || hash === '#pacs') {
+    return null;
+  }
+  if (hash.startsWith('#/viewer/') || hash.startsWith('#viewer/')) {
+    const raw = hash.replace(/^#\/?viewer\//, '').split('?')[0];
+    if (raw) return decodeURIComponent(raw);
+  }
+
   // Try pathname: /viewer/{studyUid}
   const pathParts = window.location.pathname.split('/');
   const viewerIndex = pathParts.indexOf('viewer');
@@ -41,7 +66,7 @@ const getStudyUidFromUrl = () => {
   return studyUid;
 };
 
-export default function App() {
+export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [layout, setLayout] = useState('2x2 Quad');
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -196,14 +221,35 @@ export default function App() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(false);
   const [toolbarOpen, setToolbarOpen] = useState<boolean>(true);
   const [metadataOverlayOpen, setMetadataOverlayOpen] = useState<boolean>(true);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  const loadStudyAndSeries = (studyUid: string) => {
+  const loadStudyAndSeries = async (studyUid: string) => {
     if (!studyUid || studyUid === 'undefined' || studyUid === 'null') return;
     if (currentStudyUidRef.current === studyUid && pacsStudy) {
-      console.log(`[MedView PRO] Study ${studyUid} is already loaded. Skipping duplicate load.`);
+      console.log(`[MerilView] Study ${studyUid} is already loaded. Skipping duplicate load.`);
       return;
     }
     currentStudyUidRef.current = studyUid;
+
+    // Clean URL so old ?studyUID query params or stale paths don't persist
+    try {
+      if (window.location.search || !window.location.hash.includes(studyUid)) {
+        window.history.replaceState({}, '', `/#/viewer/${encodeURIComponent(studyUid)}`);
+      }
+    } catch (_) {}
+
+    // Notify backend selection hub so active_study stays in sync
+    try {
+      fetch(`${API_BASE_URL}/api/studies/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studyInstanceUID: studyUid,
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+    } catch (_) {}
+
     setActiveStats((prev: any) => ({
       ...prev,
       seriesInstanceUid: undefined,
@@ -211,68 +257,91 @@ export default function App() {
       seriesDescription: undefined,
     }));
     
-    console.log(`[MedView PRO] Connecting to PACS backend for StudyUID: ${studyUid}`);
-    
-    const studyUrl = `${API_BASE_URL}/api/studies/${studyUid}`;
-    console.log(`[MedView PRO] Fetching study metadata from: ${studyUrl}`);
-    
-    fetch(studyUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        if (data && (data.study_instance_uid || data.studyInstanceUid)) {
-          console.log(`[MedView PRO] Study metadata successfully retrieved. Patient Name: ${data.patient_name || data.patientName}, ID: ${data.patient_id || data.patientId}`);
+    console.log(`[MerilView] Connecting to PACS backend for StudyUID: ${studyUid}`);
+
+    // Helper to query API with automatic fallback between FastAPI (8000) and PACS Archive Service (3001)
+    const fetchWithFallback = async (path: string) => {
+      // 1. Try FastAPI (port 8000) first
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(`${API_BASE_URL}${path}`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn(`[MerilView] FastAPI ${path} failed or timed out, trying direct PACS fallback:`, err);
+      }
+
+      // 2. Direct fallback to PACS Archive Service (port 3001)
+      try {
+        const pacsBase = import.meta.env.VITE_PACS_API_BASE_URL || SHARE_API_BASE_URL || 'http://127.0.0.1:3001';
+        const res = await fetch(`${pacsBase}${path}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.error(`[MerilView] PACS fallback ${path} failed:`, err);
+      }
+      return null;
+    };
+
+    try {
+      const studyData = await fetchWithFallback(`/api/studies/${studyUid}`);
+      if (studyData) {
+        const item = studyData.data || studyData;
+        if (item && (item.study_instance_uid || item.studyInstanceUid || item.patient_name || item.patientName)) {
+          console.log(`[MerilView] Study metadata successfully retrieved. Patient Name: ${item.patient_name || item.patientName}`);
           const mappedStudy = {
-            studyInstanceUid: data.study_instance_uid || data.studyInstanceUid,
-            patientName: data.patient_name || data.patientName || 'DICOM Patient',
-            patientId: data.patient_id || data.patientId || 'MR-001',
-            patientBirthDate: data.patient_birth_date || data.patientBirthDate || '',
-            patientSex: data.patient_sex || data.patientSex || 'O',
-            studyDate: data.study_date || data.studyDate || '',
-            studyTime: data.study_time || data.studyTime || '',
-            studyDescription: data.study_description || data.studyDescription || '',
-            modalitiesInStudy: data.modalities_in_study || data.modalitiesInStudy || 'MR',
-            numberOfStudyRelatedSeries: data.number_of_study_related_series || data.numberOfStudyRelatedSeries || 1,
-            numberOfStudyRelatedInstances: data.number_of_study_related_instances || data.numberOfStudyRelatedInstances || 1,
-            institution: data.institution || ''
+            studyInstanceUid: item.study_instance_uid || item.studyInstanceUid || studyUid,
+            patientName: item.patient_name || item.patientName || 'DICOM Patient',
+            patientId: item.patient_id || item.patientId || 'MR-001',
+            patientBirthDate: item.patient_birth_date || item.patientBirthDate || '',
+            patientSex: item.patient_sex || item.patientSex || 'O',
+            studyDate: item.study_date || item.studyDate || '',
+            studyTime: item.study_time || item.studyTime || '',
+            studyDescription: item.study_description || item.studyDescription || '',
+            modalitiesInStudy: item.modalities_in_study || item.modalitiesInStudy || 'CT',
+            numberOfStudyRelatedSeries: item.number_of_study_related_series || item.numberOfStudyRelatedSeries || 1,
+            numberOfStudyRelatedInstances: item.number_of_study_related_instances || item.numberOfStudyRelatedInstances || 1,
+            institution: item.institution || ''
           };
           setPacsStudy(mappedStudy);
         } else {
           currentStudyUidRef.current = null;
         }
-      })
-      .catch((err) => {
+      } else {
         currentStudyUidRef.current = null;
-        console.error('[MedView PRO] Error fetching study from PACS backend:', err);
-      });
+      }
 
-    const seriesUrl = `${API_BASE_URL}/api/studies/${studyUid}/series`;
-    console.log(`[MedView PRO] Fetching series hierarchy from: ${seriesUrl}`);
-    
-    fetch(seriesUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        if (Array.isArray(data)) {
-          console.log(`[MedView PRO] Series list successfully retrieved. Count: ${data.length}`);
-          const mappedSeriesList = data.map((s: any) => ({
+      const seriesData = await fetchWithFallback(`/api/studies/${studyUid}/series`);
+      if (seriesData) {
+        const rawList = seriesData.data || seriesData;
+        const seriesArray = Array.isArray(rawList) ? rawList : (Array.isArray(seriesData) ? seriesData : []);
+        if (seriesArray.length > 0) {
+          console.log(`[MerilView] Series list successfully retrieved. Count: ${seriesArray.length}`);
+          const mappedSeriesList = seriesArray.map((s: any) => ({
             seriesInstanceUid: s.series_instance_uid || s.seriesInstanceUid,
-            studyInstanceUid: s.study_instance_uid || s.studyInstanceUid,
+            studyInstanceUid: s.study_instance_uid || s.studyInstanceUid || studyUid,
             seriesNumber: s.series_number ?? s.seriesNumber ?? 1,
-            modality: s.modality || 'MR',
+            modality: s.modality || 'CT',
             seriesDescription: s.series_description || s.seriesDescription || 'Series',
             numberOfSeriesRelatedInstances: s.number_of_series_related_instances || s.numberOfSeriesRelatedInstances || 1
           }));
           setPacsSeriesList(mappedSeriesList);
+
+          // Auto-load the first volumetric series (or first series) into the viewport
+          const defaultSeries = mappedSeriesList.find((s: any) => (s.numberOfSeriesRelatedInstances || 1) > 1) || mappedSeriesList[0];
+          if (defaultSeries) {
+            handleLoadSeries(defaultSeries.seriesInstanceUid, defaultSeries.seriesDescription, defaultSeries);
+          }
         }
-      })
-      .catch((err) => {
-        console.error('[MedView PRO] Error fetching series from PACS backend:', err);
-      });
+      }
+    } catch (err) {
+      currentStudyUidRef.current = null;
+      console.error('[MerilView] Error loading study and series from PACS:', err);
+    }
   };
 
   const uploadWebFiles = async (files: File[]) => {
@@ -395,10 +464,24 @@ export default function App() {
     currentStudyUidRef.current = null;
     setSharePermissions(null); // Reset link permissions
     setActiveShareToken(null);
-    if (!(window as any).electronAPI) {
-      window.history.pushState({}, '', '/');
+    try {
+      window.history.replaceState({}, '', '/#/pacs');
+    } catch (_) {}
+    if (onNavigateToPacs) {
+      onNavigateToPacs();
+    } else {
+      window.location.hash = '#/pacs';
     }
   };
+
+  // Automatically load initialStudyUid if passed from unified router
+  useEffect(() => {
+    const targetUid = initialStudyUid || getStudyUidFromUrl();
+    if (targetUid) {
+      setIsSystemChecking(false);
+      loadStudyAndSeries(targetUid);
+    }
+  }, [initialStudyUid]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -436,15 +519,23 @@ export default function App() {
 
   // Listen for Electron deep links
   useEffect(() => {
-    if ((window as any).electronAPI?.onOpenSharedStudy) {
-      const unsubscribe = (window as any).electronAPI.onOpenSharedStudy((token: string) => {
-        if (token) {
-          setIsSystemChecking(false);
-          validateAndLoadSharedStudy(token);
-        }
-      });
-      return unsubscribe;
-    }
+    const api = (window as any).electronAPI;
+    const unsubShare = api?.onOpenSharedStudy?.((token: string) => {
+      if (token) {
+        setIsSystemChecking(false);
+        validateAndLoadSharedStudy(token);
+      }
+    });
+    const unsubStudy = api?.onOpenStudy?.((uid: string) => {
+      if (uid) {
+        setIsSystemChecking(false);
+        loadStudyAndSeries(uid);
+      }
+    });
+    return () => {
+      if (unsubShare) unsubShare();
+      if (unsubStudy) unsubStudy();
+    };
   }, []);
 
   // WebSockets synchronization listener client
@@ -456,11 +547,13 @@ export default function App() {
     const clientType = isElectron ? 'electron' : 'web';
 
     const connectWebSocket = () => {
-      console.log(`[MedView PRO] Connecting WebSocket sync as: ${clientType}`);
-      ws = new WebSocket(`ws://127.0.0.1:8000/ws/viewer?clientType=${clientType}`);
+      const activeParam = initialStudyUid || currentStudyUidRef.current;
+      const queryParam = activeParam ? `&studyUID=${encodeURIComponent(activeParam)}` : '';
+      console.log(`[MerilView] Connecting WebSocket sync as: ${clientType}`);
+      ws = new WebSocket(`ws://127.0.0.1:8000/ws/viewer?clientType=${clientType}${queryParam}`);
 
       ws.onopen = () => {
-        console.log(`[MedView PRO] WebSocket sync connection established as ${clientType}`);
+        console.log(`[MerilView] WebSocket sync connection established as ${clientType}`);
       };
 
       ws.onmessage = (event) => {
@@ -468,28 +561,28 @@ export default function App() {
           const payload = JSON.parse(event.data);
           if (payload.event === 'StudySelected' && payload.studyInstanceUID) {
             const studyUid = payload.studyInstanceUID;
-            console.log(`[MedView PRO] Received StudySelected sync trigger for UID: ${studyUid}`);
+            console.log(`[MerilView] Received StudySelected sync trigger for UID: ${studyUid}`);
             
-            // Cleanly update route path in browser address bar without triggering full page reload
-            if (!isElectron && window.location.pathname !== `/viewer/${studyUid}`) {
-              window.history.pushState({}, '', `/viewer/${studyUid}`);
+            // Only switch studies if this is genuinely a different study
+            if (studyUid && studyUid !== currentStudyUidRef.current) {
+              if (!isElectron && window.location.pathname !== `/viewer/${studyUid}`) {
+                window.history.pushState({}, '', `/#/viewer/${encodeURIComponent(studyUid)}`);
+              }
+              loadStudyAndSeries(studyUid);
             }
-            
-            // Asynchronously reload DICOM files
-            loadStudyAndSeries(studyUid);
           }
         } catch (err) {
-          console.error("[MedView PRO] Error parsing WebSocket message:", err);
+          console.error("[MerilView] Error parsing WebSocket message:", err);
         }
       };
 
       ws.onclose = (e) => {
-        console.log(`[MedView PRO] WebSocket sync disconnected (${e.reason || 'no reason'}). Reconnecting in 3s...`);
+        console.log(`[MerilView] WebSocket sync disconnected (${e.reason || 'no reason'}). Reconnecting in 3s...`);
         reconnectTimeout = setTimeout(connectWebSocket, 3000);
       };
 
       ws.onerror = (err) => {
-        console.error("[MedView PRO] WebSocket sync encountered error:", err);
+        console.error("[MerilView] WebSocket sync encountered error:", err);
       };
     };
 
@@ -567,7 +660,7 @@ export default function App() {
       const totalImages = activeStats.totalImages || 1;
       document.title = `${patientName} | ${studyDesc} | Series ${seriesNum} | Image ${imageIndex}/${totalImages}`;
     } else {
-      document.title = 'MedView PRO DICOM Viewer';
+      document.title = 'MerilView DICOM Viewer';
     }
   }, [pacsStudy, activeStats]);
 
@@ -725,10 +818,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalShortcuts);
   }, [activeViewportId, pacsStudy, activeStats, sharePermissions]);
 
-  const handleLoadSeries = (seriesId: string, seriesLabel: string) => {
-    const activeSeriesObj = pacsSeriesList?.find(s => s.seriesInstanceUid === seriesId);
-    const maxSlices = activeSeriesObj ? (activeSeriesObj.numberOfSeriesRelatedInstances || 1) : 183;
-    const seriesNum = activeSeriesObj ? (activeSeriesObj.seriesNumber || 1) : 1;
+  const handleLoadSeries = (seriesId: string, seriesLabel: string, seriesObj?: any) => {
+    const activeSeriesObj = seriesObj || pacsSeriesList?.find(s => (s.seriesInstanceUid || s.series_instance_uid) === seriesId);
+    const maxSlices = activeSeriesObj ? (activeSeriesObj.numberOfSeriesRelatedInstances || activeSeriesObj.number_of_series_related_instances || 1) : 175;
+    const seriesNum = activeSeriesObj ? (activeSeriesObj.seriesNumber ?? activeSeriesObj.series_number ?? 1) : 1;
     setViewportCommand({
       type: `loadSeries:${seriesLabel}:${maxSlices}:${seriesId}:${seriesNum}`,
       viewportId: activeViewportId,
@@ -742,6 +835,9 @@ export default function App() {
       return;
     } else if (action === 'manageShares') {
       setIsManageSharesOpen(true);
+      return;
+    } else if (action === 'diagnostics' || action === 'error_finder' || action === 'errorFinding') {
+      setIsDiagnosticsOpen(true);
       return;
     }
 
@@ -791,10 +887,12 @@ export default function App() {
       handleOpenFolder();
     } else if (action === 'exportStudy' || action === 'export') {
       handleExportStudy();
-    } else if (action === 'pacs') {
-      showToast('PACS Query functionality coming soon', 'info');
+    } else if (action === 'pacs' || action === 'openPacs') {
+      handleCloseStudy();
+    } else if (action === 'loadDefaultStudy') {
+      loadStudyAndSeries('1.3.46.670589.33.1.63920665120842380200001.5535694576552993899');
     } else if (action === 'db') {
-      showToast('Local Database functionality coming soon', 'info');
+      loadStudyAndSeries('1.3.46.670589.33.1.63920665120842380200001.5535694576552993899');
     } else if (action === 'recent') {
       showToast('Recent Studies functionality coming soon', 'info');
     } else if (action === 'dicomdir') {
@@ -817,7 +915,7 @@ export default function App() {
       showToast('Advanced Display Option coming soon', 'info');
     } else if (action === 'print') {
       handlePrint();
-    } else if (action === 'closeStudy') {
+    } else if (action === 'closeStudy' || action === 'openPacs') {
       handleCloseStudy();
     } else if (action === 'fullscreen') {
       toggleFullscreen();
@@ -867,6 +965,7 @@ export default function App() {
         activeStats={activeStats}
         readOnly={readOnly}
         sharePermissions={sharePermissions}
+        onNavigateToPacs={onNavigateToPacs || handleCloseStudy}
       />
 
       {/* Viewer Toolbar (72px) */}
@@ -922,6 +1021,7 @@ export default function App() {
         stats={activeStats} 
         activeTool={activeTool} 
         layout={layout} 
+        onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
       />
 
       {/* Viewport-level Global Tooltip (Prevents container clipping) */}
@@ -966,6 +1066,14 @@ export default function App() {
           errorMsg={passwordPromptError}
         />
       )}
+
+      {/* Error Finding & System Health Diagnostic Modal */}
+      <ErrorFindingModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        study={pacsStudy}
+        onActionCommand={handleActionCommand}
+      />
 
       {/* Custom Toast Notifications overlay container */}
       <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-2 pointer-events-none select-none">

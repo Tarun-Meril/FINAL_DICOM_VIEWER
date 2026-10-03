@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_NAME: str = "MedView PRO Backend"
+    APP_NAME: str = "MerilView Backend"
     DEBUG: bool = True
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = "change-me-in-production"
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     
     # PACS Study Browser backend URL (Node.js, port 3001)
-    PACS_BROWSER_URL: str = "http://localhost:3001"
+    PACS_BROWSER_URL: str = "http://127.0.0.1:3001"
     
     # Direct DICOMWeb URL override (optional)
     DICOMWEB_URL: str | None = None

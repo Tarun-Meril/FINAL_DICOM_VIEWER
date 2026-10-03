@@ -44,7 +44,7 @@ export class MeshExporter {
   }
 
   public static exportToOBJ(mesh: SurfaceTriangleMesh): string {
-    let obj = '# MedView PRO Exported Mesh\n';
+    let obj = '# MerilView Exported Mesh\n';
     for (let i = 0; i < mesh.vertices.length; i += 3) {
       obj += `v ${mesh.vertices[i]} ${mesh.vertices[i + 1]} ${mesh.vertices[i + 2]}\n`;
     }

@@ -16,7 +16,7 @@ const root = document.getElementById('root');
 if (!root) throw new Error('#root element is missing from index.html');
 createRoot(root).render(
   <React.StrictMode>
-    <ErrorBoundary fallbackTitle="MedView VR could not start.">
+    <ErrorBoundary fallbackTitle="MerilView VR could not start.">
       <App />
     </ErrorBoundary>
   </React.StrictMode>,

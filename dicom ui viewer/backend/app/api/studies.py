@@ -53,7 +53,7 @@ async def get_study(study_uid: str):
             resp = await client.get(f"{settings.PACS_BROWSER_URL}/api/studies/{study_uid}")
             if resp.status_code == 200:
                 pacs_data = resp.json()
-                # Map camelCase -> snake_case for MedView PRO App.tsx
+                # Map camelCase -> snake_case for MerilView App.tsx
                 if pacs_data.get("success") and pacs_data.get("data"):
                     d = pacs_data["data"]
                     return {

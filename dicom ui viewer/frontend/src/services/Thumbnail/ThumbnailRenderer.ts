@@ -44,8 +44,15 @@ export class ThumbnailRenderer {
       },
     };
 
-    this.renderingEngine.enableElement(viewportInput);
-    const viewport = this.renderingEngine.getViewport(this.viewportId) as cornerstoneCore.Types.IStackViewport;
+    let viewport = this.renderingEngine.getViewport(this.viewportId) as cornerstoneCore.Types.IStackViewport;
+    if (!viewport) {
+      try {
+        this.renderingEngine.enableElement(viewportInput);
+        viewport = this.renderingEngine.getViewport(this.viewportId) as cornerstoneCore.Types.IStackViewport;
+      } catch (err) {
+        viewport = this.renderingEngine.getViewport(this.viewportId) as cornerstoneCore.Types.IStackViewport;
+      }
+    }
 
     try {
       await cornerstoneCore.imageLoader.loadAndCacheImage(imageId);

@@ -122,47 +122,84 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # repo root is 4 levels up from dicom ui viewer/backend/app/api
 REPO_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", "..", ".."))
 
-DB_PATH = os.path.join(REPO_ROOT, "pacs-study-browser", "backend", "data", "db.json")
-PACS_INSTANCES_DIR = os.path.join(REPO_ROOT, "pacs-study-browser", "backend", "data", "instances")
+DB_CANDIDATES = [
+    os.environ.get("DB_PATH"),
+    "C:/ProgramData/MerilView/database/db.json",
+    "C:/ProgramData/MedView PRO/database/db.json",
+    os.path.join(REPO_ROOT, "pacs-study-browser", "backend", "data", "db.json"),
+]
+
+PACS_DIR_CANDIDATES = [
+    os.environ.get("PACS_INSTANCES_DIR"),
+    "C:/ProgramData/MerilView/dicom",
+    "C:/ProgramData/MedView PRO/dicom",
+    os.path.join(REPO_ROOT, "pacs-study-browser", "backend", "data", "instances"),
+]
 
 def _load_db_map():
     inst_map = {}
-    if os.path.exists(DB_PATH):
+    for db_p in [p for p in DB_CANDIDATES if p and os.path.exists(p)]:
         try:
-            with open(DB_PATH, "r", encoding="utf-8") as f:
+            with open(db_p, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for item in data.get("instances", []):
                     uid = item.get("sopInstanceUid") or item.get("sop_instance_uid")
                     path = item.get("filePath") or item.get("file_path")
                     if uid and path:
                         inst_map[uid] = path
+            if inst_map:
+                break
         except Exception:
             pass
     return inst_map
 
 _db_instance_map = _load_db_map()
 
+_indexed_pacs_files: Optional[dict] = None
+
+def _get_indexed_pacs_files() -> dict:
+    global _indexed_pacs_files
+    if _indexed_pacs_files is not None:
+        return _indexed_pacs_files
+    _indexed_pacs_files = {}
+    valid_dirs = [d for d in PACS_DIR_CANDIDATES if d and os.path.exists(d)]
+    for p_dir in valid_dirs:
+        for root, _, files in os.walk(p_dir):
+            for f in files:
+                if f.endswith('.dcm'):
+                    uid_stem = f[:-4]
+                    if uid_stem not in _indexed_pacs_files:
+                        _indexed_pacs_files[uid_stem] = os.path.join(root, f)
+                elif '.' not in f:
+                    if f not in _indexed_pacs_files:
+                        _indexed_pacs_files[f] = os.path.join(root, f)
+    return _indexed_pacs_files
+
 def locate_instance_file(instance_uid: str) -> Optional[str]:
     path = _db_instance_map.get(instance_uid)
     if path and os.path.exists(path):
         return path
 
+    valid_dirs = [d for d in PACS_DIR_CANDIDATES if d and os.path.exists(d)]
+
     if path:
         norm = path.replace("\\", "/")
-        if "/instances/" in norm:
-            rel = norm.split("/instances/")[1]
-            candidate = os.path.join(PACS_INSTANCES_DIR, *rel.split("/"))
-            if os.path.exists(candidate):
-                _db_instance_map[instance_uid] = candidate
-                return candidate
+        for marker in ["/instances/", "/dicom/"]:
+            if marker in norm:
+                rel = norm.split(marker)[1]
+                for p_dir in valid_dirs:
+                    candidate = os.path.join(p_dir, *rel.split("/"))
+                    if os.path.exists(candidate):
+                        _db_instance_map[instance_uid] = candidate
+                        return candidate
 
-    filename = f"{instance_uid}.dcm"
-    if os.path.exists(PACS_INSTANCES_DIR):
-        for root, _, files in os.walk(PACS_INSTANCES_DIR):
-            if filename in files:
-                full_path = os.path.join(root, filename)
-                _db_instance_map[instance_uid] = full_path
-                return full_path
+    indexed = _get_indexed_pacs_files()
+    if instance_uid in indexed:
+        cand = indexed[instance_uid]
+        if os.path.exists(cand):
+            _db_instance_map[instance_uid] = cand
+            return cand
+
     return None
 
 @router.get("/{instance_uid}/file")
@@ -171,6 +208,17 @@ async def get_instance_file(instance_uid: str):
     file_path = locate_instance_file(instance_uid)
     if file_path and os.path.exists(file_path):
         return FileResponse(file_path, media_type="application/dicom")
+
+    # Try PACS Study Browser backend first
+    try:
+        import httpx
+        from app.config.config import settings
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            resp = await http_client.get(f"{settings.PACS_BROWSER_URL}/api/instances/{instance_uid}/file")
+            if resp.status_code == 200 and len(resp.content) > 100:
+                return Response(content=resp.content, media_type="application/dicom")
+    except Exception:
+        pass
 
     try:
         dicom_bytes = await client.retrieve_instance("", "", instance_uid)
@@ -190,6 +238,17 @@ async def get_instance_frame(instance_uid: str, wc: Optional[float] = None, ww: 
             try:
                 with open(file_path, "rb") as f:
                     dicom_bytes = f.read()
+            except Exception:
+                pass
+
+        if not dicom_bytes:
+            try:
+                import httpx
+                from app.config.config import settings
+                async with httpx.AsyncClient(timeout=15.0) as http_client:
+                    resp = await http_client.get(f"{settings.PACS_BROWSER_URL}/api/instances/{instance_uid}/file")
+                    if resp.status_code == 200 and len(resp.content) > 100:
+                        dicom_bytes = resp.content
             except Exception:
                 pass
 

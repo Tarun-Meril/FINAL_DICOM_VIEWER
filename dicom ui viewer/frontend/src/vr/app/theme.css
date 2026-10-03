@@ -1,5 +1,5 @@
 /**
- * MedView VR workstation styles.
+ * MerilView VR workstation styles.
  *
  * PORTED from the standalone app's theme.css and SCOPED to `.medview-vr`.
  *
@@ -10,7 +10,7 @@
  * becomes the `.medview-vr` root itself. Visual output inside VR is unchanged.
  */
 
-/* MedView VR — dark clinical reading-room theme.
+/* MerilView VR — dark clinical reading-room theme.
    Neutral greys, one restrained accent, high-contrast controls, no decoration. */
 .medview-vr {
   --bg-0: #0a0b0d;

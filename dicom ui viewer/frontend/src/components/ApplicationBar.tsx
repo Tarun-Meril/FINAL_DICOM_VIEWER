@@ -28,6 +28,7 @@ interface ApplicationBarProps {
   activeStats: any;
   readOnly?: boolean;
   sharePermissions?: any;
+  onNavigateToPacs?: () => void;
 }
 
 interface MenuItem {
@@ -62,7 +63,8 @@ export default function ApplicationBar({
   pacsStudy,
   activeStats,
   readOnly,
-  sharePermissions
+  sharePermissions,
+  onNavigateToPacs
 }: ApplicationBarProps) {
   const [minimizeNotif, setMinimizeNotif] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -123,7 +125,7 @@ export default function ApplicationBar({
         setStudiesLoading(false);
       })
       .catch((err) => {
-        console.error('[MedView PRO] Error fetching studies for application bar:', err);
+        console.error('[MerilView] Error fetching studies for application bar:', err);
         setStudiesLoading(false);
       });
   };
@@ -179,8 +181,16 @@ export default function ApplicationBar({
   const menus = [
     {
       name: 'File',
-      altKey: 'f',
       items: [
+        { 
+          label: 'PACS Study Browser', 
+          icon: '🏥', 
+          shortcut: 'Ctrl+B', 
+          onClick: () => {
+            if (onNavigateToPacs) onNavigateToPacs();
+            else onActionCommand('openPacs');
+          } 
+        },
         { label: 'New Study', icon: '📄', shortcut: 'Ctrl+N', onClick: () => alert('Action: New Study'), disabled: !!sharePermissions },
         { label: 'Open DICOM Files...', icon: '📂', shortcut: 'Ctrl+O', onClick: () => onActionCommand('openFiles'), disabled: !!sharePermissions },
         { label: 'Open Local DICOM Folder...', icon: '📁', onClick: () => onActionCommand('openFolder'), disabled: !!sharePermissions },
@@ -440,7 +450,7 @@ export default function ApplicationBar({
       name: 'Help',
       altKey: 'h',
       items: [
-        { label: 'About MedView PRO', icon: 'ℹ', onClick: () => setActiveModal('about') },
+        { label: 'About MerilView', icon: 'ℹ', onClick: () => setActiveModal('about') },
         { label: 'Keyboard Shortcuts', icon: '⌨', onClick: () => setActiveModal('shortcuts') },
         { type: 'separator' as const },
         { label: 'User Guide', icon: '📖', onClick: () => alert('Opening local User Guide...') },
@@ -667,7 +677,7 @@ export default function ApplicationBar({
 
   // Calculate Titlebar Details
   const getTitleContent = () => {
-    if (!pacsStudy) return 'MedView PRO';
+    if (!pacsStudy) return 'MerilView';
     const patientName = pacsStudy.patientName || 'Anonymous';
     const studyDesc = pacsStudy.studyDescription || 'DICOM Study';
     const seriesNum = activeStats?.seriesNumber || 1;
@@ -685,8 +695,19 @@ export default function ApplicationBar({
     >
       
       {/* SECTION 1 - Application Identity */}
-      <div className="flex items-center no-drag-region ml-2 shrink-0 gap-[6px]">
+      <div className="flex items-center no-drag-region ml-2 shrink-0 gap-[8px]">
         <img src={logo} alt="Meril Logo" style={{ height: '22px', width: 'auto', display: 'block' }} />
+        <button
+          onClick={() => {
+            if (onNavigateToPacs) onNavigateToPacs();
+            else onActionCommand('openPacs');
+          }}
+          title="Return to PACS Study Browser (Ctrl+B)"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11.5px] font-semibold bg-[#1e293b] text-[#38bdf8] hover:bg-[#334155] hover:text-white border border-[#334155] transition-colors cursor-pointer"
+        >
+          <span>←</span>
+          <span>Back to PACS</span>
+        </button>
       </div>
 
       {/* SECTION 2 - Desktop Menu */}
@@ -1000,7 +1021,7 @@ export default function ApplicationBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-[2px] pointer-events-auto">
           <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-[400px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-4 py-3 bg-[#15181E] border-b border-[#353C48]">
-              <span className="text-[14px] font-bold text-white uppercase tracking-wider">About MedView PRO</span>
+              <span className="text-[14px] font-bold text-white uppercase tracking-wider">About MerilView</span>
               <button 
                 onClick={() => setActiveModal(null)}
                 className="text-[#8B949E] hover:text-white transition-colors cursor-pointer outline-none"
@@ -1017,7 +1038,7 @@ export default function ApplicationBar({
                 </svg>
               </div>
               <div className="flex flex-col gap-1">
-                <h3 className="text-[18px] font-bold text-white tracking-wide">MedView PRO Workstation</h3>
+                <h3 className="text-[18px] font-bold text-white tracking-wide">MerilView Workstation</h3>
                 <span className="text-[12px] text-[#8B949E] font-medium font-mono">
                   {isElectron ? 'Desktop Workstation' : 'Web Browser Workstation'}
                 </span>
@@ -1028,7 +1049,7 @@ export default function ApplicationBar({
               </p>
               <div className="w-full h-[1px] bg-[#353C48]/50 my-2" />
               <span className="text-[11px] text-[#666666]">
-                Copyright © 2026 MedView Team. All rights reserved.
+                Copyright © 2026 MerilView Team. All rights reserved.
               </span>
             </div>
           </div>

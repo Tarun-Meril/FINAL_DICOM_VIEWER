@@ -18,6 +18,12 @@ export const ENV = {
   STORAGE_DIR: process.env.STORAGE_DIR || path.join(__dirname, '../../data/instances'),
   // File path for the JSON database
   DB_PATH: process.env.DB_PATH || path.join(__dirname, '../../data/db.json'),
+  // Directory where application log files are stored (user-writable)
+  LOG_DIR: process.env.LOG_DIR || (process.env.ProgramData ? path.join(process.env.ProgramData, 'MerilView', 'logs') : path.join(__dirname, '../../../logs')),
+  // Temporary directory for uploads and processing
+  TEMP_DIR: process.env.TEMP_DIR || (process.env.ProgramData ? path.join(process.env.ProgramData, 'MerilView', 'temp') : path.join(__dirname, '../../data/temp')),
+  // Directory for backups
+  BACKUP_DIR: process.env.BACKUP_DIR || (process.env.ProgramData ? path.join(process.env.ProgramData, 'MerilView', 'backups') : path.join(__dirname, '../../data/backups')),
   // Simulated PACS configuration
   PACS: {
     AE_TITLE: process.env.PACS_AE_TITLE || 'MEDVIEW_PACS',

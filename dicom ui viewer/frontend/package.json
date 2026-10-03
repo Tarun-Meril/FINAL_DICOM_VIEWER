@@ -1,7 +1,7 @@
 {
-  "name": "medview-pro",
+  "name": "merilview",
   "version": "1.0.0",
-  "description": "MedView PRO DICOM Viewer - Desktop Application Shell",
+  "description": "MerilView DICOM Viewer - Desktop Application Shell",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -11,7 +11,10 @@
     "dev:electron": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:5174 && electron .\"",
     "build": "node copy-vr-wasm.mjs && tsc && vite build",
     "preview": "vite preview",
-    "build:desktop": "cross-env ELECTRON_BUILD=true npm run build && electron-builder"
+    "build:desktop": "cross-env ELECTRON_BUILD=true npm run build && electron-builder",
+    "build:desktop:win": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --win",
+    "build:desktop:mac": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --mac",
+    "build:desktop:linux": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux"
   },
   "dependencies": {
     "@cornerstonejs/codec-charls": "1.2.3",
@@ -20,14 +23,15 @@
     "@cornerstonejs/codec-openjph": "2.4.7",
     "@cornerstonejs/core": "4.17.2",
     "@cornerstonejs/dicom-image-loader": "4.17.2",
-    "@cornerstonejs/tools": "^4.17.2",
+    "@cornerstonejs/tools": "4.17.2",
     "@kitware/vtk.js": "36.14.2",
     "@types/gl-matrix": "^2.4.5",
     "@types/seedrandom": "^3.0.8",
     "dcmjs": "0.49.4",
     "dicom-parser": "1.8.21",
+    "events": "^3.3.0",
     "gl-matrix": "^3.4.4",
-    "lucide-react": "^1.46.0",
+    "lucide-react": "^1.48.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -59,8 +63,8 @@
     "wait-on": "^8.0.5"
   },
   "build": {
-    "appId": "com.medview.pro",
-    "productName": "MedView PRO",
+    "appId": "com.meril.merilview",
+    "productName": "MerilView",
     "directories": {
       "output": "release"
     },
@@ -69,12 +73,88 @@
       "electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "../../pacs-study-browser/backend/dist",
+        "to": "pacs-backend/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../pacs-study-browser/backend/node_modules",
+        "to": "pacs-backend/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../pacs-study-browser/backend/data",
+        "to": "pacs-backend/data",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../pacs-study-browser/backend/package.json",
+        "to": "pacs-backend/package.json"
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/.venv/**",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/medview_pro.db*",
+          "!**/celerybeat-schedule*"
+        ]
+      }
+    ],
+    "protocols": [
+      {
+        "name": "MerilView Medical Protocol",
+        "schemes": [
+          "merilview",
+          "medview"
+        ]
+      }
+    ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "MerilView Setup.${ext}",
+      "executableName": "MerilView"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "MerilView.${ext}",
+      "category": "public.app-category.medical-software",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "artifactName": "MerilView.${ext}",
+      "category": "MedicalSoftware",
+      "synopsis": "MerilView Medical Imaging PACS and Advanced 2D/3D DICOM Workstation",
+      "description": "Unified medical diagnostic workstation featuring PACS study archive browsing, Cornerstone3D multiplanar reconstruction (MPR), curved planar reconstruction (CPR), and VTK.js volumetric rendering.",
+      "desktop": {
+        "StartupWMClass": "MerilView",
+        "Terminal": "false",
+        "Categories": "Graphics;MedicalSoftware;Science;",
+        "MimeType": "x-scheme-handler/merilview;x-scheme-handler/medview;application/dicom;"
+      }
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MerilView",
+      "include": "electron/installer.nsh"
     }
   },
   "optionalDependencies": {

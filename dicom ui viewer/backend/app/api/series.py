@@ -58,7 +58,15 @@ def extract_instance_metadata(inst_dict: dict, idx: int) -> dict:
         from app.api.instances import locate_instance_file
         file_path = locate_instance_file(sop_uid)
 
-    if file_path:
+    # Fast path: If the PACS database already indexed these fields, skip expensive pydicom.dcmread
+    has_meta = (
+        inst_dict.get("windowCenter") is not None
+        and inst_dict.get("pixelSpacing") is not None
+        and inst_dict.get("imagePosition") is not None
+        and inst_dict.get("imageOrientation") is not None
+    )
+
+    if not has_meta and file_path:
         full_path = None
         if os.path.exists(file_path):
             full_path = file_path
@@ -129,9 +137,14 @@ def extract_instance_metadata(inst_dict: dict, idx: int) -> dict:
         "frame_of_reference_uid": frame_of_reference_uid,
     }
 
+_series_instances_cache: dict = {}
+
 @router.get("/{series_uid}/instances", response_model=List[InstanceResponse])
 async def get_series_instances(series_uid: str):
     """Retrieve list of instances (images) under a series by proxying to PACS backend"""
+    if series_uid in _series_instances_cache:
+        return _series_instances_cache[series_uid]
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{settings.PACS_BROWSER_URL}/api/series/{series_uid}/instances")
@@ -144,10 +157,12 @@ async def get_series_instances(series_uid: str):
                         pacs_data["data"],
                         key=lambda x: int(x.get("instanceNumber", x.get("instance_number", 0)))
                     )
-                    return [
+                    results = [
                         extract_instance_metadata(inst, idx)
                         for idx, inst in enumerate(instances_sorted)
                     ]
+                    _series_instances_cache[series_uid] = results
+                    return results
     except Exception:
         pass
 

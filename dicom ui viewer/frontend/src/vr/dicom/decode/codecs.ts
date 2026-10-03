@@ -18,31 +18,38 @@ const QUIET = {
 
 function baseUrl(): string {
   // In Node.js environment (tests, scripts), locate relative to public directory
-  if (typeof process !== 'undefined' && process.versions?.node) {
+  if (typeof process !== 'undefined' && (process as any).versions?.node) {
     return (process.cwd().replace(/\\/g, '/') + '/public/');
   }
-  // In a Worker, import.meta.env might not be available or might be different
-  try {
-    const base = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL;
-    if (base) {
-      return base.endsWith('/') ? base : `${base}/`;
-    }
-  } catch (e) {
-    // import.meta might not be available in Worker
-  }
 
-  // Fallback: try to get the base from globalThis.location in Worker context
   try {
     const g = typeof globalThis !== 'undefined' ? (globalThis as any) : null;
-    if (g?.location?.origin) {
-      const origin = g.location.origin;
-      return origin ? `${origin}/` : '/';
+    if (g?.location) {
+      if (g.location.origin && g.location.origin !== 'null') {
+        return g.location.origin.endsWith('/') ? g.location.origin : `${g.location.origin}/`;
+      }
+      if (g.location.href) {
+        const href = String(g.location.href);
+        const assetsIdx = href.lastIndexOf('/assets/');
+        if (assetsIdx !== -1) {
+          return href.substring(0, assetsIdx + 1);
+        }
+        const lastSlash = href.lastIndexOf('/');
+        if (lastSlash !== -1) {
+          return href.substring(0, lastSlash + 1);
+        }
+      }
     }
-  } catch (e) {
-    // Not in Worker or location not available
-  }
+  } catch (e) {}
 
-  return '/';
+  try {
+    const base = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL;
+    if (base && base !== './' && base !== '/') {
+      return base.endsWith('/') ? base : `${base}/`;
+    }
+  } catch (e) {}
+
+  return './';
 }
 
 let openjpegPromise: Promise<AnyModule> | null = null;

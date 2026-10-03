@@ -33,7 +33,7 @@ async function run() {
     console.error(`[PAGE UNCAUGHT ERROR]:`, err.message);
   });
 
-  console.log('--- Step 1: Navigating to CT Study in MedView PRO Viewer ---');
+  console.log('--- Step 1: Navigating to CT Study in MerilView Viewer ---');
   // CT Study: Fatima Bhanpurwala CT ABD CONT
   const studyUid = '1.3.46.670589.33.1.63920660937429831000001.5462275000837404300';
   await page.goto(`http://localhost:5174/viewer/${studyUid}`, { waitUntil: 'domcontentloaded' });

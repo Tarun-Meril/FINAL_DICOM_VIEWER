@@ -1,4 +1,4 @@
-# MedView PRO — Enterprise Advanced Clinical Applications Platform (Phase 23)
+# MerilView — Enterprise Advanced Clinical Applications Platform (Phase 23)
 
 ## Overview
 Phase 23 introduces production-grade specialty clinical applications for Vascular CTA, Coronary Cardiac Imaging, Neuro Radiography, Virtual Bronchoscopy, Endoluminal Virtual Colonoscopy, Orthopedic Fracture Planning, Surgical Safety Margins, and Disease Progression Follow-Up in `frontend/src/clinical/applications/`.

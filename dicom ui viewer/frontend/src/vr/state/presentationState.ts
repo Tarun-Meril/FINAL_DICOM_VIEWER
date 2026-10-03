@@ -116,11 +116,11 @@ export function parsePresentationState(json: string): PresentationState {
   catch { throw new PresentationStateError('This file is not valid JSON.'); }
   const p = parsed as Partial<PresentationState>;
   if (p?.schema !== PRESENTATION_STATE_SCHEMA) {
-    throw new PresentationStateError('This file is not a MedView 3D presentation state.');
+    throw new PresentationStateError('This file is not a MerilView 3D presentation state.');
   }
   if (typeof p.version !== 'number' || p.version > PRESENTATION_STATE_VERSION) {
     throw new PresentationStateError(
-      `This presentation state was written by a newer version (v${p.version}) of MedView and cannot be read.`);
+      `This presentation state was written by a newer version (v${p.version}) of MerilView and cannot be read.`);
   }
   if (!p.dataset?.seriesInstanceUID) {
     throw new PresentationStateError('The presentation state does not name a series.');

@@ -27,7 +27,7 @@ app.get('/', (req, res) => {
     <! climate-html>
     <html>
       <head>
-        <title>MedView PRO PACS Service Status</title>
+        <title>MerilView PACS Service Status</title>
         <style>
           body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
           .card { background: #1e293b; border: 1px solid #334155; padding: 2rem; rounded: 12px; max-width: 480px; width: 100%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); border-radius: 12px; text-align: center; }

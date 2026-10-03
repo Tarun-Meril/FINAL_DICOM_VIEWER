@@ -74,3 +74,11 @@ frontend/.env
 /dicom ui viewer/mpr_diff.txt
 /dicom ui viewer/frontend/test.png
 /dicom ui viewer/backend/test34.png
+
+# Scratch files and temporary test captures
+scratch/
+**/scratch/
+scratch_*.jpg
+fatima_slice0.png
+test_frame.png
+

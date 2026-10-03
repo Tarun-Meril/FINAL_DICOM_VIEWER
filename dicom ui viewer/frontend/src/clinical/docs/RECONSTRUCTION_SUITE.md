@@ -1,4 +1,4 @@
-# MedView PRO — Advanced Reconstruction & Multi-Planar Imaging Suite (Phase 21 & Phase 21.5)
+# MerilView — Advanced Reconstruction & Multi-Planar Imaging Suite (Phase 21 & Phase 21.5)
 
 ## Overview
 Phase 21 & Phase 21.5 expand the Clinical Application Framework in `frontend/src/clinical/` with Frenet-Frame Curved Planar Reconstruction (CPR), Oblique/Double-Oblique MPR, Thick Slab rendering, Image Filters, PET/CT Fusion LUTs, Volume Registration Metrics, Background Reconstruction Workers, and a unified **Shared Enterprise Clinical Tools Framework**.

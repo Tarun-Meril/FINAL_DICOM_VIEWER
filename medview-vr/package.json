@@ -2,7 +2,7 @@
   "name": "medview-vr",
   "private": true,
   "version": "0.1.0",
-  "description": "MedView VR - standalone CT 3D volume visualization and rendering engine (R&D prototype)",
+  "description": "MerilView VR - standalone CT 3D volume visualization and rendering engine (R&D prototype)",
   "type": "module",
   "engines": {
     "node": ">=20"

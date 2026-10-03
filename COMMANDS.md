@@ -1,4 +1,4 @@
-# MedView PRO DICOM Workstation - Project Commands Manual
+# MerilView DICOM Workstation - Project Commands Manual
 
 This document provides a comprehensive operational guide, package scripts, build targets, database migrations, and Docker containerization commands for all workstation components.
 
@@ -8,25 +8,50 @@ This document provides a comprehensive operational guide, package scripts, build
 
 | Component | Default Port | Technology | Primary Function | Working Directory |
 | :--- | :--- | :--- | :--- | :--- |
-| **MedView PRO Frontend** | `5174` | React 19, Vite, CornerstoneJS | Diagnostic 2D/3D DICOM Viewer | `dicom ui viewer/frontend` |
-| **MedView PRO Backend** | `8000` | FastAPI, Python 3.12, Uvicorn | REST API, WebSockets, Storage, AI | `dicom ui viewer/backend` |
+| **MerilView Frontend** | `5174` | React 19, Vite, CornerstoneJS | Diagnostic 2D/3D DICOM Viewer | `dicom ui viewer/frontend` |
+| **MerilView Backend** | `8000` | FastAPI, Python 3.12, Uvicorn | REST API, WebSockets, Storage, AI | `dicom ui viewer/backend` |
 | **PACS Study Browser (Web)** | `3005` | React, Vite, Tailwind | Study listing, search & viewer launcher | `pacs-study-browser/frontend` |
 | **PACS Study Browser (API)** | `3001` | Express, Node.js, Supabase | DICOM study indexing & sharing API | `pacs-study-browser/backend` |
-| **MedView VR Engine** | `5173` | Three.js / WebGL / VTK.js | 3D Volume Rendering engine | `medview-vr` |
+| **MerilView VR Engine** | `5173` | Three.js / WebGL / VTK.js | 3D Volume Rendering engine | `medview-vr` |
 | **Standalone MPR Viewer** | `5176` | Cornerstone3D, Vite (COOP/COEP) | 2D Multi-Planar Reconstruction | `mpr building/mpr building` |
 | **Orthanc PACS Server** | `8042` / `4242` | Orthanc C++ / Plugins | DICOMweb & C-STORE DICOM archive | Docker (`pacs-orthanc`) |
 | **PostgreSQL Database** | `5432` | PostgreSQL 16 | Annotations, sessions, hanging protocols | Docker (`db-postgres`) |
 | **Redis Cache / Broker** | `6379` | Redis 7 | Viewport caching, Celery task queue | Docker (`cache-redis`) |
 | **Nginx Production Client** | `3000` / `80` | Nginx Alpine | Production static SPA with COOP/COEP | Docker (`web-frontend`) |
+| **Unified Desktop Application** | Desktop App | Electron 34, React 19, Express, SQLite | Single `.exe` desktop workstation combining PACS & Viewer | `dicom ui viewer/frontend` |
 
 ---
 
-## 1. Unified Root Orchestration Commands
+## 1. Unified Desktop Application & Orchestration Commands
 
-Run these commands from the repository root (`g:\MAIN-DICOM-main`):
+### A. Desktop Workstation Build & Packaging (Single `.exe` Installer)
+
+Run from the repository root:
 
 ```powershell
-# Run PACS Study Browser and MedView PRO Viewer concurrently
+# Build production bundle and package single Windows installer: "MerilView Setup.exe"
+npm run build:desktop
+```
+
+* **Installer Output**: `dicom ui viewer/frontend/release/MerilView Setup.exe`
+* **Portable / Unpacked Output**: `dicom ui viewer/frontend/release/win-unpacked/MerilView.exe`
+* **Persistent Clinical Storage**: `%ProgramData%\MerilView` (retained across app updates and uninstalls)
+  * `database/db.json` (DICOM study catalog)
+  * `dicom/` (persistent DICOM storage & imported instances)
+  * `logs/` (`pacs_backend.log`, `viewer_backend.log`)
+  * `exports/`, `config/`, `cache/`
+
+### B. Desktop Workstation Development
+
+```powershell
+# Launch unified MerilView in Electron desktop development mode (with hot-reload)
+npm run dev:electron
+```
+
+### C. Web / Microservices Local Development
+
+```powershell
+# Run PACS Study Browser and MerilView Viewer concurrently in browser
 npm run dev
 
 # Alternative alias for running PACS and Viewer together
@@ -35,17 +60,14 @@ npm run dev:all
 # Run PACS Study Browser only (starts Express 3001 & React 3005)
 npm run dev:pacs
 
-# Run MedView PRO Frontend Viewer only (port 5174)
+# Run MerilView Frontend Viewer only (port 5174)
 npm run dev:viewer
 
-# Run MedView VR 3D Volume Rendering engine (port 5173)
+# Run MerilView VR 3D Volume Rendering engine (port 5173)
 npm run dev:vr
 
 # Run Standalone 2D MPR Reconstruction engine (port 5176)
 npm run dev:mpr
-
-# Launch MedView PRO wrapped inside the native Electron desktop shell
-npm run dev:electron
 ```
 
 ---
@@ -97,16 +119,16 @@ docker compose up -d db-postgres cache-redis pacs-orthanc
 ### C. Standalone Docker Builds
 
 ```powershell
-# Build MedView PRO Backend Image
+# Build MerilView Backend Image
 docker build -t medview-backend:latest "dicom ui viewer/backend"
 
-# Build MedView PRO Frontend Image (includes Nginx + Cross-Origin Isolation)
+# Build MerilView Frontend Image (includes Nginx + Cross-Origin Isolation)
 docker build -t medview-frontend:latest "dicom ui viewer/frontend"
 ```
 
 ---
 
-## 3. MedView PRO API Service (Backend)
+## 3. MerilView API Service (Backend)
 
 Working directory: `dicom ui viewer/backend`
 
@@ -170,7 +192,7 @@ celery -A app.worker beat --loglevel=info
 
 ---
 
-## 4. MedView PRO DICOM Viewer (Frontend)
+## 4. MerilView DICOM Viewer (Frontend)
 
 Working directory: `dicom ui viewer/frontend`
 
@@ -241,7 +263,7 @@ npm run build:all
 
 ---
 
-## 6. MedView VR Engine (3D Volume Rendering)
+## 6. MerilView VR Engine (3D Volume Rendering)
 
 Working directory: `medview-vr`
 

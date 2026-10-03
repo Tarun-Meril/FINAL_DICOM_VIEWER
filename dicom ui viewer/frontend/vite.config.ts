@@ -6,7 +6,6 @@ import path from 'path';
 import fs from 'fs';
 
 import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
 
 const spaViewerFallback = () => ({
   name: 'spa-viewer-fallback',
@@ -15,6 +14,9 @@ const spaViewerFallback = () => ({
       const isSpaRoute =
         req.url &&
         (req.url.startsWith('/viewer/') ||
+          req.url === '/pacs' ||
+          req.url.startsWith('/pacs/') ||
+          req.url.startsWith('/pacs?') ||
           req.url === '/mpr' ||
           req.url.startsWith('/mpr?') ||
           req.url.startsWith('/mpr/') ||
@@ -61,6 +63,7 @@ export default defineConfig({
   resolve: {
     alias: {
       'globalthis': path.resolve(__dirname, './src/globalthis-shim.ts'),
+      'events': 'events',
       // Volume-rendering engine (already in this project) and the VR UI layer.
       '@3d': path.resolve(__dirname, './src/3d'),
       '@vr': path.resolve(__dirname, './src/vr')
@@ -71,13 +74,12 @@ export default defineConfig({
     cornerstoneCodecFixPlugin(),
     react(),
     tailwindcss(),
-    wasm(),
-    topLevelAwait()
+    wasm()
   ],
   worker: {
     format: 'es'
   },
-  base: process.env.ELECTRON_BUILD === 'true' ? './' : '/',
+  base: './',
   server: {
     port: viewerConfig.port,
     host: '127.0.0.1',
@@ -107,11 +109,14 @@ export default defineConfig({
       '@cornerstonejs/codec-openjpeg/decodewasmjs',
       '@cornerstonejs/codec-openjpeg/decode',
       'jpeg-lossless-decoder-js',
-      'fflate'
+      'fflate',
+      'events',
+      'xmlbuilder2'
     ],
     exclude: ['decodeImageFrameWorker', '@cornerstonejs/dicom-image-loader']
   },
   build: {
+    target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
   },

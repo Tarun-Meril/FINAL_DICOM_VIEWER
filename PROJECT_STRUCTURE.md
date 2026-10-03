@@ -1,6 +1,6 @@
-# MedView PRO DICOM Workstation - Project Structure
+# MerilView DICOM Workstation - Project Structure
 
-This document provides a comprehensive map of the directory structure across the MedView PRO DICOM Workstation repository.
+This document provides a comprehensive map of the directory structure across the MerilView DICOM Workstation repository.
 
 ---
 
@@ -93,7 +93,7 @@ MAIN-DICOM-main/
 
 ## 2. Subsystem Descriptions
 
-### A. MedView PRO Diagnostic Viewer (`dicom ui viewer/frontend`)
+### A. MerilView Diagnostic Viewer (`dicom ui viewer/frontend`)
 * **`src/components/Viewport.tsx`**: High-performance medical image canvas handling pan, zoom, window/level (WW/WL), rotation, invert, pseudo-color LUTs, and interactive drawing tools.
 * **`src/initCornerstone.ts`**: Configures the CornerstoneJS 4.x core image loader with client-side WebAssembly codecs:
   * `libjpeg-turbo` for baseline 8-bit DICOM JPEGs.
@@ -107,7 +107,7 @@ MAIN-DICOM-main/
 * **`src/mpr/`**: Integrates 2D Multi-Planar Reconstruction directly within the main workstation view.
 * **`electron/`**: Wraps the web application in a native Windows desktop shell with borderless frame controls and local file system access.
 
-### B. MedView PRO Backend API (`dicom ui viewer/backend`)
+### B. MerilView Backend API (`dicom ui viewer/backend`)
 * **`app/main.py`**: ASGI application initialization, CORS configuration, `/health` diagnostics endpoint, and bidirectional WebSocket synchronization hubs.
 * **`app/api/`**: Comprehensive REST router suite covering authentication, studies, series, instances, metadata, viewport state, layouts, annotations, hanging protocols, and AI inferences.
 * **`app/worker.py`**: Celery asynchronous background worker handling offloaded tasks:
@@ -119,9 +119,9 @@ MAIN-DICOM-main/
 ### C. PACS Study Browser (`pacs-study-browser`)
 * Decoupled administrative study browser simulating a hospital PACS network.
 * Supports filtering by Patient Name, ID, Accession Number, Modality, and Date.
-* Offers drag-and-drop DICOM import and generates deep links that seamlessly launch the MedView PRO viewer.
+* Offers drag-and-drop DICOM import and generates deep links that seamlessly launch the MerilView viewer.
 
-### D. MedView VR Engine (`medview-vr`)
+### D. MerilView VR Engine (`medview-vr`)
 * Pure 3D volume visualization prototype utilizing VTK.js GPU ray casting.
 * Directly reads local DICOM series without requiring server-side reformatting.
 * Features customizable transfer function presets, multi-planar clipping slabs, and 3D segmentation sculpting.

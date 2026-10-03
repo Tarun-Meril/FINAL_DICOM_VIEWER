@@ -3,7 +3,7 @@ import ViewportOverlay, { ViewportOverlayData } from './ViewportOverlay';
 import ViewportPlaceholder from './ViewportPlaceholder';
 import ViewportContextMenu from './ViewportContextMenu';
 import { API_BASE_URL } from '../config';
-import { addInstanceMetadata } from '../initCornerstone';
+import { addInstanceMetadata, initCornerstone } from '../initCornerstone';
 
 import {
   RenderingEngine,
@@ -97,6 +97,8 @@ export default function Viewport({
 }: ViewportProps) {
   const [currentSeriesId, setCurrentSeriesId] = useState<string | null>(null);
   const [instancesList, setInstancesList] = useState<any[]>([]);
+  const instancesListRef = useRef<any[]>([]);
+  instancesListRef.current = instancesList;
   const [currentSlice, setCurrentSlice] = useState(1);
   const [totalImages, setTotalImages] = useState(183);
   const [studyDesc, setStudyDesc] = useState('');
@@ -104,6 +106,9 @@ export default function Viewport({
   const [windowWidth, setWindowWidth] = useState(400);
   const [windowLevel, setWindowLevel] = useState(40);
   const [zoom, setZoom] = useState(1);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const hasCenteredInitialCameraRef = useRef<boolean>(false);
   
   const [cinePlaying, setCinePlaying] = useState(false);
   const [cineFps, setCineFps] = useState(15);
@@ -148,53 +153,120 @@ export default function Viewport({
 
   // Reset viewport only when study UID actually changes
   useEffect(() => {
-    if (studyUid && prevStudyUidRef.current !== studyUid) {
-      prevStudyUidRef.current = studyUid;
+    if (studyUid !== prevStudyUidRef.current) {
+      prevStudyUidRef.current = studyUid || null;
       setCurrentSeriesId(null);
       setInstancesList([]);
       setCurrentSlice(1);
+      setLoadingError(null);
+      hasCenteredInitialCameraRef.current = false;
     }
   }, [studyUid]);
 
-  // Auto-initialize series list
+  // Reset initial centered flag whenever current series changes
+  useEffect(() => {
+    hasCenteredInitialCameraRef.current = false;
+  }, [currentSeriesId]);
+
+  // Auto-initialize series list with endpoint fallback
   useEffect(() => {
     if (studyUid && !currentSeriesId) {
-      const url = `${API_BASE_URL}/api/studies/${studyUid}/series`;
-      fetch(url)
-        .then(res => res.json())
-        .then(seriesList => {
-          if (Array.isArray(seriesList) && seriesList.length > 0) {
-            const seriesIndex = (index - 1) % seriesList.length;
-            const targetSeries = seriesList[seriesIndex];
-            if (targetSeries) {
-              const targetSeriesUid = targetSeries.series_instance_uid || targetSeries.seriesInstanceUid;
-              setCurrentSeriesId(targetSeriesUid);
-              setTotalImages(targetSeries.number_of_series_related_instances || targetSeries.numberOfSeriesRelatedInstances || targetSeries.num_instances || 183);
-              setStudyDesc(targetSeries.series_description || targetSeries.seriesDescription || baseData.studyDescription);
-              setSeriesNum(targetSeries.series_number ?? targetSeries.seriesNumber ?? index);
+      setIsLoading(true);
+      setLoadingError(null);
+
+      const fetchSeries = async () => {
+        const endpoints = [
+          `${API_BASE_URL}/api/studies/${studyUid}/series`,
+          `http://127.0.0.1:8000/api/studies/${studyUid}/series`,
+          `http://127.0.0.1:3001/api/studies/${studyUid}/series`
+        ];
+        const uniqueEndpoints = [...new Set(endpoints)];
+        let seriesList: any[] = [];
+        let lastErr: any = null;
+
+        for (const ep of uniqueEndpoints) {
+          try {
+            const res = await fetch(ep);
+            if (res.ok) {
+              const data = await res.json();
+              const list = Array.isArray(data) ? data : (data?.data || []);
+              if (list.length > 0) {
+                seriesList = list;
+                break;
+              }
             }
+          } catch (e) {
+            lastErr = e;
           }
-        })
-        .catch(err => console.error("Error loading default series:", err));
+        }
+
+        if (seriesList.length > 0) {
+          const seriesIndex = (index - 1) % seriesList.length;
+          const targetSeries = seriesList[seriesIndex];
+          if (targetSeries) {
+            const targetSeriesUid = targetSeries.series_instance_uid || targetSeries.seriesInstanceUid;
+            setCurrentSeriesId(targetSeriesUid);
+            setTotalImages(targetSeries.number_of_series_related_instances || targetSeries.numberOfSeriesRelatedInstances || targetSeries.num_instances || 183);
+            setStudyDesc(targetSeries.series_description || targetSeries.seriesDescription || baseData.studyDescription);
+            setSeriesNum(targetSeries.series_number ?? targetSeries.seriesNumber ?? index);
+          }
+        } else {
+          setIsLoading(false);
+          setLoadingError(`Could not find series for study ${studyUid}. Check PACS connection: ${lastErr?.message || 'Empty list'}`);
+        }
+      };
+
+      fetchSeries();
     }
   }, [studyUid, currentSeriesId, index]);
 
-  // Fetch SOP Instances list
+  // Fetch SOP Instances list with dual-endpoint fallback
   useEffect(() => {
     if (currentSeriesId) {
-      const url = `${API_BASE_URL}/api/series/${currentSeriesId}/instances`;
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data) && data.length > 0) {
-            setInstancesList(data);
-            setTotalImages(data.length);
-            setCurrentSlice(Math.max(1, Math.floor(data.length / 2)));
+      setIsLoading(true);
+      setLoadingError(null);
+
+      const fetchInstances = async () => {
+        const endpoints = [
+          `${API_BASE_URL}/api/series/${currentSeriesId}/instances`,
+          `http://127.0.0.1:8000/api/series/${currentSeriesId}/instances`,
+          `http://127.0.0.1:3001/api/series/${currentSeriesId}/instances`
+        ];
+        const uniqueEndpoints = [...new Set(endpoints)];
+        let instances: any[] = [];
+        let lastErr: any = null;
+
+        for (const ep of uniqueEndpoints) {
+          try {
+            const res = await fetch(ep);
+            if (res.ok) {
+              const data = await res.json();
+              const list = Array.isArray(data) ? data : (data?.data || []);
+              if (list.length > 0) {
+                instances = list;
+                break;
+              }
+            }
+          } catch (e) {
+            lastErr = e;
           }
-        })
-        .catch(err => console.error("Error loading instances:", err));
+        }
+
+        if (instances.length > 0) {
+          setInstancesList(instances);
+          setTotalImages(instances.length);
+          setCurrentSlice(1);
+          setIsLoading(false);
+        } else {
+          setIsLoading(false);
+          setLoadingError(`No DICOM instances found for series ${currentSeriesId}. ${lastErr?.message || 'Check server status.'}`);
+        }
+      };
+
+      fetchInstances();
     } else {
       setInstancesList([]);
+      setIsLoading(false);
     }
   }, [currentSeriesId]);
 
@@ -252,7 +324,13 @@ export default function Viewport({
         console.warn('[Cornerstone3D] enableElement notice:', e);
       }
     };
-    ensureViewportReady();
+
+    initCornerstone().then(() => {
+      if (isMounted) ensureViewportReady();
+    }).catch((err) => {
+      console.warn('[Viewport] initCornerstone warning:', err);
+      if (isMounted) ensureViewportReady();
+    });
 
     // Create/reuse per-viewport tool group
     let toolGroup = ToolGroupManager.getToolGroup(toolGroupId);
@@ -389,6 +467,46 @@ export default function Viewport({
     element.addEventListener(Enums.Events.CAMERA_MODIFIED, onCameraModified);
     element.addEventListener(Enums.Events.VOI_MODIFIED, onCameraModified);
 
+    const onImageRendered = () => {
+      if (!isMounted) return;
+      const activeEngine = getRenderingEngine(renderingEngineId);
+      if (!activeEngine) return;
+      const activeViewport = activeEngine.getViewport(viewportId) as Types.IStackViewport;
+      if (!activeViewport) return;
+
+      const imgData = activeViewport.getImageData();
+      if (imgData && imgData.dimensions && imgData.dimensions[0] > 0) {
+        if (!hasCenteredInitialCameraRef.current) {
+          hasCenteredInitialCameraRef.current = true;
+          const targetIndex = activeViewport.getCurrentImageIdIndex();
+          const targetInst = instancesListRef.current?.[targetIndex];
+          let rawWc = targetInst?.window_center ?? targetInst?.windowCenter;
+          let rawWw = targetInst?.window_width ?? targetInst?.windowWidth;
+          if (Array.isArray(rawWc)) rawWc = rawWc[0];
+          if (Array.isArray(rawWw)) rawWw = rawWw[0];
+          const numWc = Number(rawWc);
+          const numWw = Number(rawWw);
+
+          activeViewport.resetCamera();
+          if (!isNaN(numWc) && !isNaN(numWw) && numWw > 0) {
+            const ww = Math.round(numWw);
+            const wc = Math.round(numWc);
+            activeViewport.setProperties({ voiRange: { lower: wc - ww / 2, upper: wc + ww / 2 } });
+            setWindowWidth(ww);
+            setWindowLevel(wc);
+          }
+          activeViewport.render();
+        }
+      }
+    };
+    element.addEventListener(Enums.Events.IMAGE_RENDERED, onImageRendered);
+
+    const onImageLoadFailed = (evt: any) => {
+      console.error(`[Cornerstone3D] Image load failed on ${viewportId}:`, evt.detail);
+      setLoadingError(`Image decode failed: ${evt.detail?.error || 'Unsupported or corrupted DICOM slice'}`);
+    };
+    element.addEventListener(Enums.Events.IMAGE_LOAD_FAILED, onImageLoadFailed);
+
     // Attach ResizeObserver to handle element size changes & grid layout updates (guard against sub-pixel loops)
     let lastObservedWidth = 0;
     let lastObservedHeight = 0;
@@ -444,6 +562,8 @@ export default function Viewport({
       element.removeEventListener(Enums.Events.STACK_NEW_IMAGE, onNewImage);
       element.removeEventListener(Enums.Events.CAMERA_MODIFIED, onCameraModified);
       element.removeEventListener(Enums.Events.VOI_MODIFIED, onCameraModified);
+      element.removeEventListener(Enums.Events.IMAGE_RENDERED, onImageRendered);
+      element.removeEventListener(Enums.Events.IMAGE_LOAD_FAILED, onImageLoadFailed);
       try {
         const tg = ToolGroupManager.getToolGroup(toolGroupId);
         if (tg) {
@@ -501,8 +621,8 @@ export default function Viewport({
         if (inst.samples_per_pixel !== undefined || inst.samplesPerPixel !== undefined) meta.samplesPerPixel = inst.samples_per_pixel ?? inst.samplesPerPixel;
         if (inst.pixel_spacing || inst.pixelSpacing) meta.pixelSpacing = inst.pixel_spacing || inst.pixelSpacing;
         if (inst.rows) meta.rows = inst.rows;
-        if (inst.columns) meta.columns = inst.columns;
-        const modality = inst.modality || inst.Modality || 'MR';
+        const modality = inst.modality || inst.Modality || 'CT';
+        meta.modality = modality;
         if (inst.window_center !== undefined || inst.windowCenter !== undefined) meta.windowCenter = inst.window_center ?? inst.windowCenter;
         if (inst.window_width !== undefined || inst.windowWidth !== undefined) meta.windowWidth = inst.window_width ?? inst.windowWidth;
         
@@ -532,22 +652,23 @@ export default function Viewport({
           if (!activeEngine || !activeEngine.getViewport(viewportId)) return;
 
           const targetIndex = initialIndex;
-          const props = viewport.getProperties();
-          if (props && props.voiRange && !isNaN(props.voiRange.lower) && !isNaN(props.voiRange.upper)) {
-            const ww = Math.round(props.voiRange.upper - props.voiRange.lower);
-            const wc = Math.round(props.voiRange.lower + (props.voiRange.upper - props.voiRange.lower) / 2);
-            setWindowWidth(prev => (Math.abs(prev - ww) > 1 ? ww : prev));
-            setWindowLevel(prev => (Math.abs(prev - wc) > 1 ? wc : prev));
+          let rawWc = instancesList[targetIndex]?.window_center ?? instancesList[targetIndex]?.windowCenter;
+          let rawWw = instancesList[targetIndex]?.window_width ?? instancesList[targetIndex]?.windowWidth;
+          if (Array.isArray(rawWc)) rawWc = rawWc[0];
+          if (Array.isArray(rawWw)) rawWw = rawWw[0];
+          let numWc = Number(rawWc);
+          let numWw = Number(rawWw);
+          if (!isNaN(numWc) && !isNaN(numWw) && numWw > 0) {
+            const ww = Math.round(numWw);
+            const wc = Math.round(numWc);
+            viewport.setProperties({ voiRange: { lower: wc - ww / 2, upper: wc + ww / 2 } });
+            setWindowWidth(ww);
+            setWindowLevel(wc);
           } else {
-            let rawWc = instancesList[targetIndex]?.window_center ?? instancesList[targetIndex]?.windowCenter;
-            let rawWw = instancesList[targetIndex]?.window_width ?? instancesList[targetIndex]?.windowWidth;
-            if (Array.isArray(rawWc)) rawWc = rawWc[0];
-            if (Array.isArray(rawWw)) rawWw = rawWw[0];
-            let numWc = Number(rawWc);
-            let numWw = Number(rawWw);
-            if (!isNaN(numWc) && !isNaN(numWw) && numWw > 0) {
-              const ww = Math.round(numWw);
-              const wc = Math.round(numWc);
+            const props = viewport.getProperties();
+            if (props && props.voiRange && !isNaN(props.voiRange.lower) && !isNaN(props.voiRange.upper)) {
+              const ww = Math.round(props.voiRange.upper - props.voiRange.lower);
+              const wc = Math.round(props.voiRange.lower + (props.voiRange.upper - props.voiRange.lower) / 2);
               setWindowWidth(prev => (Math.abs(prev - ww) > 1 ? ww : prev));
               setWindowLevel(prev => (Math.abs(prev - wc) > 1 ? wc : prev));
             } else {
@@ -558,12 +679,43 @@ export default function Viewport({
 
           viewport.resetCamera();
           viewport.render();
+
+          // Camera bounding box is 0 until the image is decoded by the worker.
+          // Schedule camera reset checks to ensure parallelScale is adjusted from 1 to slice dimensions.
+          const scheduleCameraReset = (delay: number) => {
+            setTimeout(() => {
+              if (!isMounted) return;
+              const vp = getRenderingEngine(renderingEngineId)?.getViewport(viewportId) as Types.IStackViewport;
+              if (vp) {
+                const img = vp.getImageData();
+                if (img && img.dimensions && img.dimensions[0] > 0) {
+                  const cam = vp.getCamera();
+                  if (cam.parallelScale <= 1.05 || !hasCenteredInitialCameraRef.current) {
+                    hasCenteredInitialCameraRef.current = true;
+                    vp.resetCamera();
+                    if (!isNaN(numWc) && !isNaN(numWw) && numWw > 0) {
+                      vp.setProperties({ voiRange: { lower: numWc - numWw / 2, upper: numWc + numWw / 2 } });
+                    }
+                    vp.render();
+                  }
+                }
+              }
+            }, delay);
+          };
+          scheduleCameraReset(60);
+          scheduleCameraReset(200);
+          scheduleCameraReset(500);
+
+          // Defer background stack prefetching until visible slices have rendered
           if (elementRef.current) {
-            try {
-              toolsUtilities.stackPrefetch.enable(elementRef.current);
-            } catch (e) {
-              console.warn('[Cornerstone3D] stackPrefetch enable notice:', e);
-            }
+            setTimeout(() => {
+              if (!isMounted || !elementRef.current) return;
+              try {
+                toolsUtilities.stackPrefetch.enable(elementRef.current);
+              } catch (e) {
+                // ignore
+              }
+            }, 3000);
           }
         } catch (err) {
           console.warn('[Cornerstone3D] Viewport setStack callback ignored (likely unmounted):', err);
@@ -1148,6 +1300,8 @@ export default function Viewport({
 
   const overlayData = {
     ...baseData,
+    seriesNumber: seriesNum,
+    studyDescription: studyDesc || baseData.studyDescription,
     imageNumber: currentSlice,
     totalImages: totalImages,
     zoom: `${Math.round(zoom * 100)}%`,
@@ -1167,6 +1321,7 @@ export default function Viewport({
 
   return (
     <div
+      id={viewportId}
       onClick={() => {
         onSelect();
         onFocus();
@@ -1238,6 +1393,54 @@ export default function Viewport({
               {currentSlice} / {totalImages}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Error Finding Diagnostic Banner */}
+      {loadingError && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pointer-events-auto">
+          <div className="bg-[#14171D] border border-red-500/60 rounded-lg p-5 max-w-sm text-center shadow-2xl">
+            <div className="flex items-center justify-center gap-2 text-red-400 font-semibold mb-2">
+              <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>Viewport Diagnostic Finding</span>
+            </div>
+            <p className="text-xs text-gray-300 mb-3 break-words font-mono bg-black/60 p-2.5 rounded border border-gray-800">
+              {loadingError}
+            </p>
+            <div className="text-[11px] text-gray-400 mb-4">
+              Tested Endpoints: {API_BASE_URL} &amp; http://127.0.0.1:3001
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  setLoadingError(null);
+                  setCurrentSeriesId(null);
+                  setInstancesList([]);
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-medium rounded transition shadow"
+              >
+                Retry Series
+              </button>
+              <button
+                onClick={() => onActionCommand?.('diagnostics')}
+                className="px-3 py-1.5 bg-[#232833] hover:bg-[#2E3544] active:bg-[#1D212B] text-gray-200 text-xs font-medium rounded transition border border-[#3B4456]"
+              >
+                Open Error Finder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading progress spinner */}
+      {isLoading && !loadingError && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 pointer-events-none">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#12151A]/90 border border-blue-500/30 rounded-full text-xs text-blue-300 shadow-lg">
+            <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <span>Loading DICOM Series…</span>
+          </div>
         </div>
       )}
 

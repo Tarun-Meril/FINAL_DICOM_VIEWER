@@ -6,13 +6,24 @@ import { StudyController } from '../controllers/studyController';
 import { HealthController } from '../controllers/healthController';
 import { BackupController } from '../controllers/backupController';
 import shareRoutes from '../modules/share/routes';
+import { ENV } from '../config/env';
+import os from 'os';
 
 const router = Router();
 
 // Configure Multer for temporary file uploads
-const tempDir = path.join(__dirname, '../../data/temp');
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
+let tempDir = ENV.TEMP_DIR || path.join(__dirname, '../../data/temp');
+try {
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+} catch (err) {
+  tempDir = path.join(os.tmpdir(), 'merilview-temp');
+  try {
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+  } catch (_) {}
 }
 
 const upload = multer({ dest: tempDir });
@@ -35,6 +46,8 @@ router.get('/series/:seriesInstanceUid', StudyController.getSeriesDetails);
 
 // Import & Export Routes
 router.post('/studies/upload', upload.array('files'), StudyController.uploadDicom);
+router.post('/upload', upload.array('files'), StudyController.uploadDicom);
+router.post('/studies/select', (req, res) => res.json({ success: true, timestamp: Date.now() }));
 router.get('/instances/:sopInstanceUid/file', StudyController.downloadInstance);
 router.get('/database/validate', StudyController.validateDatabase);
 

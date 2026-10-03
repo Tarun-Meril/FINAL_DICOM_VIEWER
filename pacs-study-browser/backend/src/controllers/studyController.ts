@@ -105,9 +105,19 @@ export class StudyController {
       } 
       // 2. Handle STOW-RS style raw binary upload
       else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
-        const tempDir = path.join(__dirname, '../../data/temp');
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
+        let tempDir = ENV.TEMP_DIR || path.join(__dirname, '../../data/temp');
+        try {
+          if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+        } catch (_) {
+          const os = require('os');
+          tempDir = path.join(os.tmpdir(), 'merilview-temp');
+          try {
+            if (!fs.existsSync(tempDir)) {
+              fs.mkdirSync(tempDir, { recursive: true });
+            }
+          } catch (__) {}
         }
         const tempPath = path.join(tempDir, `stow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
         fs.writeFileSync(tempPath, req.body);

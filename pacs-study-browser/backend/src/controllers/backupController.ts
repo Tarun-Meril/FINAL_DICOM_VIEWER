@@ -3,8 +3,9 @@ import { supabase } from '../modules/share/supabase';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../modules/share/logger';
+import { ENV } from '../config/env';
 
-const BACKUP_DIR = path.join(__dirname, '../../data/backups');
+const BACKUP_DIR = ENV.BACKUP_DIR || path.join(__dirname, '../../data/backups');
 
 export class BackupController {
   /**
@@ -16,8 +17,12 @@ export class BackupController {
       logger.info('application', 'Initiating share metadata backup');
 
       // Ensure backup directory exists
-      if (!fs.existsSync(BACKUP_DIR)) {
-        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      try {
+        if (!fs.existsSync(BACKUP_DIR)) {
+          fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        }
+      } catch (dirErr) {
+        logger.warn('application', `Could not create BACKUP_DIR at ${BACKUP_DIR}: ${dirErr}`);
       }
 
       // Query share links

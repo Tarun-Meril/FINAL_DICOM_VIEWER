@@ -1,6 +1,6 @@
-# Walkthrough - Phase 1 MedView PRO Restructuring & Scaffolding
+# Walkthrough - Phase 1 MerilView Restructuring & Scaffolding
 
-We have successfully restructured the **MedView PRO DICOM Viewer** project into separate frontend/backend directories, scaffolded the production-ready FastAPI backend architecture, configured PostgreSQL & Alembic, and mapped the required DICOMweb APIs.
+We have successfully restructured the **MerilView DICOM Viewer** project into separate frontend/backend directories, scaffolded the production-ready FastAPI backend architecture, configured PostgreSQL & Alembic, and mapped the required DICOMweb APIs.
 
 ---
 
@@ -38,10 +38,10 @@ Created a modular clean architecture folder layout under [dicom-viewer/dicom ui 
 
 # Walkthrough - Phase 2: Study Loading & Viewport Engine
 
-We have successfully connected the locked MedView PRO frontend to the backend services for dynamic study, series, thumbnail, and pixel frame loading.
+We have successfully connected the locked MerilView frontend to the backend services for dynamic study, series, thumbnail, and pixel frame loading.
 
 ## 1. Mapped Frontend Fetches
-* Updated [App.tsx](file:///d:/merilll%20dicom/dicom-viewer/dicom%20ui%20viewer/frontend/src/App.tsx#L30-L60) to query the MedView PRO backend (port `8000`) instead of the PACS browser backend (port `3001`).
+* Updated [App.tsx](file:///d:/merilll%20dicom/dicom-viewer/dicom%20ui%20viewer/frontend/src/App.tsx#L30-L60) to query the MerilView backend (port `8000`) instead of the PACS browser backend (port `3001`).
 * Mapped backend snake_case properties into camelCase expectations for demographics overlays.
 
 ## 2. Dynamic Series Filmstrip Preview
@@ -230,7 +230,7 @@ Mounted API routers inside `main.py` resolving:
 
 # Walkthrough - Phase 8: Enterprise Workflow, Reporting, Collaboration & Production Deployment
 
-We have successfully completed the final phase, transforming MedView PRO into a production-ready diagnostic workstation.
+We have successfully completed the final phase, transforming MerilView into a production-ready diagnostic workstation.
 
 ## 1. Structured Reporting & Printable PDFs
 * Created [report_service.py](file:///d:/merilll%20dicom/dicom-viewer/dicom%20ui%20viewer/backend/app/services/report_service.py) to manage structured clinical templates, draft status, and report versions.
@@ -261,5 +261,5 @@ Mounted API routers inside `main.py` resolving:
 * `GET /api/audit` inside [audit.py](file:///d:/merilll%20dicom/dicom-viewer/dicom%20ui%20viewer/backend/app/api/audit.py)
 * `GET /api/notifications` inside [notifications.py](file:///d:/merilll%20dicom/dicom-viewer/dicom%20ui%20viewer/backend/app/api/notifications.py)
 
-MedView PRO is now fully production-ready for global diagnostic deployments.
+MerilView is now fully production-ready for global diagnostic deployments.
 

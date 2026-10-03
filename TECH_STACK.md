@@ -1,6 +1,6 @@
-# MedView PRO DICOM Workstation - Technology Stack
+# MerilView DICOM Workstation - Technology Stack
 
-This document presents a comprehensive audit of all frameworks, libraries, rendering engines, and infrastructure components across the MedView PRO DICOM Workstation.
+This document presents a comprehensive audit of all frameworks, libraries, rendering engines, and infrastructure components across the MerilView DICOM Workstation.
 
 ---
 
@@ -66,7 +66,7 @@ This document presents a comprehensive audit of all frameworks, libraries, rende
 
 ## 5. Specialized 3D & MPR Engines
 
-### MedView VR (3D Volume Rendering)
+### MerilView VR (3D Volume Rendering)
 * **Rendering**: WebGL 2, GPU ray casting with VTK.js (`@kitware/vtk.js/Rendering/Profiles/Volume`).
 * **Hounsfield Unit Precision**: Full modality LUT with slope/intercept verification.
 * **Interactive Controls**: Transfer function histogram editor, VOI crop boxes, multi-planar clipping planes, and 3D segmentation sculpting.

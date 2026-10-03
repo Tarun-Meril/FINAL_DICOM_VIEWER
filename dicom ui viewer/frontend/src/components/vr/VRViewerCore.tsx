@@ -1,18 +1,14 @@
+import { useEffect } from 'react';
 import { VRWorkspace } from '../../vr/app/VRWorkspace';
 import '../../vr/app/theme.css';
+import { useAppStore } from '../../vr/state/store';
 
 /**
  * The integrated 3D Volume Rendering workstation.
  *
- * This is the MedView VR engine — the same VolumeRenderEngine, transfer
- * functions, presets and camera code the standalone app uses. The rendering
- * layer already lived in this project at `src/3d/`; this brings across the UI
- * and ingest layer so VR runs inside the main viewer's bundle rather than in an
- * iframe.
- *
- * It is a thin shell on purpose: everything below `VRWorkspace` is the
- * validated tree, and this file adds only the scoping wrapper that keeps the
- * workstation's styles off the rest of the application.
+ * This is the MerilView VR engine — the same VolumeRenderEngine, transfer
+ * functions, presets and camera code the standalone app uses. Directly
+ * connected to DICOM instances from the PACS.
  */
 export interface VRViewerCoreProps {
   /** StudyInstanceUID to render. Never hardcoded. */
@@ -34,6 +30,13 @@ export default function VRViewerCore({
   onClose,
   variant = 'embedded',
 }: VRViewerCoreProps) {
+  useEffect(() => {
+    const s = useAppStore.getState();
+    if (s.status === 'error') {
+      s.setError(null);
+      s.setStatus('idle');
+    }
+  }, [studyUID, seriesUID]);
   return (
     <div className="medview-vr" style={{ width: '100%', height: '100%' }}>
       <VRWorkspace
