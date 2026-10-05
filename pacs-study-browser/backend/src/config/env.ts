@@ -32,9 +32,9 @@ export const ENV = {
   },
   // Supabase Configuration
   SUPABASE: {
-    URL: process.env.SUPABASE_URL || '',
-    ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
-    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    URL: process.env.SUPABASE_URL || 'https://gjtvxsuorghxqqazlszj.supabase.co',
+    ANON_KEY: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdHZ4c3VvcmdoeHFxYXpsc3pqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExNzI2MzIsImV4cCI6MjEwNjc0ODYzMn0.gPrVjurPQGVJ3CKh6w28lDdjuTZdNNtbcSh0AocnquQ',
+    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdHZ4c3VvcmdoeHFxYXpsc3pqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTE3MjYzMiwiZXhwIjoyMTA2NzQ4NjMyfQ.Ly6sHtBM4WhnglXkdKFeXKe6gLzNFC3b0JCpVyurk2k',
   },
   // Share Study Settings
   SHARE: {

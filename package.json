@@ -10,6 +10,8 @@
     "dev:vr": "npm --prefix \"medview-vr\" run dev",
     "dev:mpr": "npm --prefix \"mpr building/mpr building\" run dev",
     "dev:electron": "npm --prefix \"dicom ui viewer/frontend\" run dev:electron",
+    "build": "cd \"dicom ui viewer/frontend\" && npm run build",
+    "vercel-build": "cd \"dicom ui viewer/frontend\" && npm install && npm run build",
     "build:desktop": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop",
     "build:desktop:win": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:win",
     "build:desktop:mac": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:mac",
