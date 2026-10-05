@@ -47,24 +47,34 @@ export class ShareRepository {
    * Creates a new share link entry.
    */
   async createShareLink(link: ShareLinkDb): Promise<ShareLinkDb> {
+    // Always persist to local db as well for instant resilience
+    const newLink = { ...link, id: link.id || Date.now().toString(), created_at: link.created_at || new Date().toISOString(), updated_at: link.updated_at || new Date().toISOString() };
+    const links = db.getShareLinks();
+    const existingIdx = links.findIndex(l => l.token === link.token);
+    if (existingIdx >= 0) links[existingIdx] = newLink;
+    else links.push(newLink);
+    db.setShareLinks(links);
+
     if (this.useLocalFallback) {
-      const newLink = { ...link, id: Date.now().toString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-      const links = db.getShareLinks();
-      links.push(newLink);
-      db.setShareLinks(links);
       return newLink;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_links')
-      .insert(link)
-      .select()
-      .single();
+    try {
+      const { data, error } = await this.supabase
+        .from('share_links')
+        .insert(link)
+        .select()
+        .single();
 
-    if (error) {
-      throw new Error(`Database error creating share link: ${error.message}`);
+      if (error) {
+        console.warn(`[ShareRepository] Supabase insert warning (saved locally): ${error.message}`);
+        return newLink;
+      }
+      return data;
+    } catch (err: any) {
+      console.warn(`[ShareRepository] Supabase connection failed during insert (saved locally): ${err.message}`);
+      return newLink;
     }
-    return data;
   }
 
   /**
@@ -76,16 +86,28 @@ export class ShareRepository {
       return links.find(l => l.token === token) || null;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_links')
-      .select('*')
-      .eq('token', token)
-      .maybeSingle();
+    try {
+      const { data, error } = await this.supabase
+        .from('share_links')
+        .select('*')
+        .eq('token', token)
+        .maybeSingle();
 
-    if (error) {
-      throw new Error(`Database error fetching share link: ${error.message}`);
+      if (error) {
+        console.warn(`[ShareRepository] Supabase query error, checking local db: ${error.message}`);
+        const links = db.getShareLinks();
+        return links.find(l => l.token === token) || null;
+      }
+      if (data) return data;
+      
+      // If not found in Supabase, also check local db
+      const links = db.getShareLinks();
+      return links.find(l => l.token === token) || null;
+    } catch (err: any) {
+      console.warn(`[ShareRepository] Supabase fetch failed, falling back to local db: ${err.message}`);
+      const links = db.getShareLinks();
+      return links.find(l => l.token === token) || null;
     }
-    return data;
   }
 
   /**

@@ -76,22 +76,22 @@ export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics
 
   return (
     <footer 
-      className="h-[26px] bg-[#202225] border-t border-[#30343A] px-3 flex items-center justify-between text-[11px] font-sans text-[#8B949E] select-none shrink-0 w-full z-40"
+      className="h-[26px] bg-[#202225] border-t border-[#30343A] px-2 sm:px-3 flex items-center justify-between text-[10px] sm:text-[11px] font-sans text-[#8B949E] select-none shrink-0 w-full z-40 overflow-hidden"
       role="contentinfo"
       aria-label="PACS Workspace Status Bar"
     >
       
       {/* 1. LEFT SECTION - Tool & Status messages */}
-      <div className="flex items-center gap-3 min-w-[220px]">
+      <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 shrink truncate">
         {/* Active Tool */}
-        <div className="flex items-center gap-1.5 border-r border-[#30343A]/50 pr-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 border-r border-[#30343A]/50 pr-2 sm:pr-3 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-[#2E7DFF] shrink-0" />
-          <span className="text-white font-medium">{getToolDisplayName(activeTool)}</span>
+          <span className="text-white font-medium truncate">{getToolDisplayName(activeTool)}</span>
         </div>
 
         {/* Status Message Reserve */}
-        <div className="flex items-center gap-2">
-          <span className={`transition-all duration-150 ${
+        <div className="flex items-center gap-1.5 min-w-0 truncate">
+          <span className={`truncate transition-all duration-150 ${
             statusMsg.startsWith('Loading') ? 'text-yellow-500 font-medium' : 'text-[#8B949E]'
           }`}>
             {statusMsg}
@@ -99,11 +99,11 @@ export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics
           
           {/* Loading Progress bar indicator */}
           {loadingProgress !== null && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               <span className="font-mono text-[9px] text-[#555]">
                 {loadingProgress}%
               </span>
-              <div className="w-16 bg-[#181A1F] h-1.5 rounded-sm overflow-hidden border border-[#30343A]">
+              <div className="w-10 sm:w-16 bg-[#181A1F] h-1.5 rounded-sm overflow-hidden border border-[#30343A]">
                 <div 
                   className="bg-yellow-500 h-full transition-all duration-75"
                   style={{ width: `${loadingProgress}%` }}
@@ -114,17 +114,17 @@ export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics
         </div>
       </div>
 
-      {/* 2. CENTER SECTION - Viewport metrics */}
-      <div className="flex items-center gap-6 justify-center text-center">
+      {/* 2. CENTER SECTION - Viewport metrics (Hidden on small mobile screens to prevent overflow) */}
+      <div className="hidden md:flex items-center gap-4 sm:gap-6 justify-center text-center shrink-0">
         <div className="flex items-center gap-1">
           <span>Image</span>
           <span className="text-white font-mono-numbers">{stats.imageIndex} / {stats.totalImages}</span>
         </div>
-        <div className="flex items-center gap-1 border-l border-[#30343A]/50 pl-6">
+        <div className="flex items-center gap-1 border-l border-[#30343A]/50 pl-4 sm:pl-6">
           <span>Zoom</span>
           <span className="text-white font-mono-numbers">{stats.zoom}</span>
         </div>
-        <div className="flex items-center gap-4 border-l border-[#30343A]/50 pl-6">
+        <div className="flex items-center gap-3 sm:gap-4 border-l border-[#30343A]/50 pl-4 sm:pl-6">
           <div className="flex items-center gap-1">
             <span>WW</span>
             <span className="text-white font-mono-numbers">{stats.windowWidth}</span>
@@ -137,16 +137,16 @@ export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics
       </div>
 
       {/* 3. RIGHT SECTION - Layout & Resolution & Hardware status space */}
-      <div className="flex items-center gap-6 min-w-[280px] justify-end">
+      <div className="flex items-center gap-2 sm:gap-6 shrink-0 justify-end">
         {/* Diagnostic & Error Finding Button */}
         {onOpenDiagnostics && (
           <button
             onClick={onOpenDiagnostics}
             title="Inspect PACS connectivity, viewport loading, and 3D VR status"
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#16181E] hover:bg-[#232732] active:bg-[#2C3240] border border-[#353D4E] text-[#B0B8C4] hover:text-white transition cursor-pointer text-[10px]"
+            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 rounded bg-[#16181E] hover:bg-[#232732] active:bg-[#2C3240] border border-[#353D4E] text-[#B0B8C4] hover:text-white transition cursor-pointer text-[9.5px] sm:text-[10px]"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-medium">Error Finder / Diag</span>
+            <span className="font-medium hidden xs:inline">Diag</span>
           </button>
         )}
 
@@ -157,13 +157,13 @@ export default function StatusBar({ stats, activeTool, layout, onOpenDiagnostics
           <span>MEM: 1.4 GB</span>
         </div>
 
-        <div className="flex items-center gap-1 pr-6 border-r border-[#30343A]/50 font-mono-numbers">
+        <div className="hidden sm:flex items-center gap-1 pr-3 sm:pr-6 border-r border-[#30343A]/50 font-mono-numbers">
           <span>{stats.resolution}</span>
           <span className="w-1 h-1 rounded-full bg-[#444]" />
           <span>{stats.spacing}</span>
         </div>
 
-        <div className="flex items-center gap-1.5 font-mono-numbers font-medium text-white">
+        <div className="flex items-center gap-1 font-mono-numbers font-medium text-white text-[10px] sm:text-[11px]">
           <span>{layout.split(' ')[0]}</span>
         </div>
       </div>

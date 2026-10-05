@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Search, SlidersHorizontal, ArrowDownUp, Calendar, Hospital, 
-  User, ChevronLeft, ChevronRight, FolderClosed, Activity, Clock
+  User, ChevronLeft, ChevronRight, FolderClosed, Activity, Clock, X
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 import { SeriesThumbnail } from './SeriesThumbnail';
@@ -13,6 +13,7 @@ interface LeftSidebarProps {
   onLoadSeries: (seriesId: string, seriesLabel: string) => void;
   onShareStudy?: () => void;
   onCopyShareLink?: () => void;
+  onCloseMobile?: () => void;
 }
 
 const formatDicomDate = (dateStr?: string) => {
@@ -106,12 +107,24 @@ function SeriesCard({ seriesNum, description, imagesCount, sliceThickness, activ
   );
 }
 
-export default function LeftSidebar({ study, series, activeSeriesInstanceUid, onLoadSeries, onShareStudy, onCopyShareLink }: LeftSidebarProps) {
+export default function LeftSidebar({ study, series, activeSeriesInstanceUid, onLoadSeries, onShareStudy, onCopyShareLink, onCloseMobile }: LeftSidebarProps) {
   const [width, setWidth] = useState(320);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [preCollapseWidth, setPreCollapseWidth] = useState(320);
   const [activeTab, setActiveTab] = useState<'study' | 'patient'>('study');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; seriesInstanceUid: string } | null>(null);
   const [studyContextMenu, setStudyContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -172,13 +185,30 @@ export default function LeftSidebar({ study, series, activeSeriesInstanceUid, on
   );
 
   return (
-    <div 
-      ref={sidebarRef}
-      style={{ width: `${width}px` }}
-      className="relative flex h-full bg-[#1F232A] border-r border-[#353C48] select-none text-[#C9D1D9] transition-all duration-200 ease-in-out shrink-0 overflow-hidden"
-      role="navigation"
-      aria-label="Study and Patient Sidebar"
-    >
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isMobile && !isCollapsed && (
+        <div 
+          onClick={() => {
+            handleCollapseToggle();
+            onCloseMobile?.();
+          }}
+          className="fixed inset-0 bg-black/60 z-40 backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      <div 
+        ref={sidebarRef}
+        style={isMobile ? { width: isCollapsed ? '0px' : '85vw', maxWidth: '320px' } : { width: `${width}px` }}
+        className={`
+          ${isMobile 
+            ? `fixed inset-y-0 left-0 z-50 shadow-2xl transition-all duration-300 ${isCollapsed ? '-translate-x-full pointer-events-none' : 'translate-x-0'}` 
+            : 'relative shrink-0 transition-all duration-200'}
+          flex h-full bg-[#1F232A] border-r border-[#353C48] select-none text-[#C9D1D9] overflow-hidden
+        `}
+        role="navigation"
+        aria-label="Study and Patient Sidebar"
+      >
       {/* COLLAPSED VERTICAL STRIP CONTAINER */}
       {isCollapsed ? (
         <div className="flex flex-col items-center w-full py-4 h-full gap-3 overflow-y-auto no-scrollbar">
@@ -255,13 +285,16 @@ export default function LeftSidebar({ study, series, activeSeriesInstanceUid, on
               </button>
             </div>
             
-            {/* Collapse Trigger Button */}
+            {/* Collapse / Close Trigger Button */}
             <button
-              onClick={handleCollapseToggle}
-              title="Collapse Sidebar"
+              onClick={() => {
+                handleCollapseToggle();
+                if (isMobile) onCloseMobile?.();
+              }}
+              title={isMobile ? "Close Sidebar" : "Collapse Sidebar"}
               className="flex items-center justify-center p-1 rounded hover:bg-[#252B34] text-[#8B949E] hover:text-white cursor-pointer transition-subtle outline-none"
             >
-              <ChevronLeft className="w-4 h-4" />
+              {isMobile ? <X className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
 
@@ -376,7 +409,12 @@ export default function LeftSidebar({ study, series, activeSeriesInstanceUid, on
                         seriesInstanceUid={series.seriesInstanceUid}
                         studyInstanceUid={series.studyInstanceUid}
                         modality={series.modality}
-                        onClick={() => onLoadSeries(series.seriesInstanceUid || '', series.desc)}
+                        onClick={() => {
+                          onLoadSeries(series.seriesInstanceUid || '', series.desc);
+                          if (isMobile) {
+                            onCloseMobile?.();
+                          }
+                        }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -554,5 +592,6 @@ export default function LeftSidebar({ study, series, activeSeriesInstanceUid, on
       )}
 
     </div>
+    </>
   );
 }

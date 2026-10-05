@@ -1,6 +1,6 @@
 {
   "name": "merilview",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MerilView DICOM Viewer - Desktop Application Shell",
   "main": "electron/main.js",
   "type": "module",
@@ -92,6 +92,10 @@
       {
         "from": "../../pacs-study-browser/backend/package.json",
         "to": "pacs-backend/package.json"
+      },
+      {
+        "from": "../../pacs-study-browser/backend/.env",
+        "to": "pacs-backend/.env"
       },
       {
         "from": "../backend",

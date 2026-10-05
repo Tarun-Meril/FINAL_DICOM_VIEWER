@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
-import { X, Copy, QrCode, ExternalLink, Link, Key, Calendar, ShieldAlert } from 'lucide-react';
+import { X, Copy, QrCode, ExternalLink, Link, Key, Calendar, ShieldAlert, Globe, Wifi, Monitor, Edit2, Check } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 // Port 3001 is where our Node.js Share Study APIs run
-const SHARE_API_BASE_URL = import.meta.env.VITE_SHARE_API_BASE_URL || 'http://localhost:3001';
+const getDynamicShareApiUrl = () => {
+  const envUrl = import.meta.env.VITE_SHARE_API_BASE_URL;
+  if (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  }
+  return envUrl || 'http://localhost:3001';
+};
+const SHARE_API_BASE_URL = getDynamicShareApiUrl();
 
 const copyTextFallback = (text: string): boolean => {
   const textArea = document.createElement('textarea');
@@ -63,6 +70,17 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showQrCode, setShowQrCode] = useState<boolean>(false);
   const [showConfirmRegenerate, setShowConfirmRegenerate] = useState<boolean>(false);
+
+  // Host Destination configuration
+  const defaultLanUrl = 'http://10.42.0.130:5174';
+  const defaultCloudUrl = 'https://pacs-dicom.vercel.app';
+  const [hostMode, setHostMode] = useState<'lan' | 'cloud' | 'desktop' | 'custom'>(() => {
+    return (localStorage.getItem('merilview_share_host_mode') as any) || 'lan';
+  });
+  const [customHost, setCustomHost] = useState<string>(() => {
+    return localStorage.getItem('merilview_share_custom_host') || defaultLanUrl;
+  });
+  const [isEditingCustomHost, setIsEditingCustomHost] = useState<boolean>(false);
 
   // Keyboard Navigation: Focus Dialog on Mount
   useEffect(() => {
@@ -144,18 +162,10 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
 
       // Format URL for sharing
       const token = data.token;
-      let hostUrl = import.meta.env.VITE_SHARE_BASE_URL;
-      if (!hostUrl) {
-        if (window.location.origin && window.location.origin !== 'file://' && !window.location.origin.startsWith('chrome-extension')) {
-          hostUrl = window.location.origin;
-        } else {
-          hostUrl = SHARE_API_BASE_URL.replace('3001', '3000');
-        }
-      }
-      const generatedUrl = `${hostUrl}/share/${token}`;
-      
-      setShareLink(generatedUrl);
       setTokenInfo(data);
+
+      const generatedUrl = buildShareUrl(token, hostMode, customHost);
+      setShareLink(generatedUrl);
       
       // Generate QR Code Offline
       const qrDataUrl = await QRCode.toDataURL(generatedUrl, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
@@ -167,6 +177,48 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
       showToast(err.message || 'API Server is offline', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const buildShareUrl = (token: string, mode: 'lan' | 'cloud' | 'desktop' | 'custom', customUrl: string) => {
+    if (mode === 'desktop') {
+      return `merilview://share/${token}`;
+    }
+    let base = defaultLanUrl;
+    if (mode === 'lan') {
+      base = defaultLanUrl;
+    } else if (mode === 'cloud') {
+      base = defaultCloudUrl;
+    } else if (mode === 'custom') {
+      base = customUrl.trim().replace(/\/+$/, '') || defaultLanUrl;
+    }
+    return `${base}/share/${token}`;
+  };
+
+  const handleHostModeChange = async (newMode: 'lan' | 'cloud' | 'desktop' | 'custom') => {
+    setHostMode(newMode);
+    localStorage.setItem('merilview_share_host_mode', newMode);
+    if (tokenInfo?.token) {
+      const url = buildShareUrl(tokenInfo.token, newMode, customHost);
+      setShareLink(url);
+      try {
+        const qr = await QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+        setQrCodeDataUrl(qr);
+      } catch (_) {}
+    }
+  };
+
+  const handleCustomHostSave = async (newHost: string) => {
+    setCustomHost(newHost);
+    localStorage.setItem('merilview_share_custom_host', newHost);
+    setIsEditingCustomHost(false);
+    if (tokenInfo?.token && hostMode === 'custom') {
+      const url = buildShareUrl(tokenInfo.token, 'custom', newHost);
+      setShareLink(url);
+      try {
+        const qr = await QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+        setQrCodeDataUrl(qr);
+      } catch (_) {}
     }
   };
 
@@ -466,6 +518,98 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                   </div>
                 </div>
               )}
+
+              {/* Target Sharing Destination */}
+              <div className="flex flex-col gap-1.5 bg-[#14171C] border border-[#252B34] rounded-[4px] p-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider select-none">
+                    Sharing Link Destination (Host)
+                  </label>
+                  {hostMode === 'custom' && !isEditingCustomHost && (
+                    <button 
+                      type="button"
+                      onClick={() => setIsEditingCustomHost(true)}
+                      className="text-[11px] text-[#3B82F6] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit2 className="w-3 h-3" /> Edit Host URL
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleHostModeChange('lan')}
+                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      hostMode === 'lan'
+                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
+                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
+                    }`}
+                  >
+                    <Wifi className="w-3.5 h-3.5" />
+                    Wi-Fi LAN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleHostModeChange('cloud')}
+                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      hostMode === 'cloud'
+                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
+                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    Public Web
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleHostModeChange('desktop')}
+                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      hostMode === 'desktop'
+                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
+                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
+                    }`}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    Desktop (.exe)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleHostModeChange('custom');
+                      setIsEditingCustomHost(true);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      hostMode === 'custom'
+                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
+                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
+                    }`}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    Custom Host
+                  </button>
+                </div>
+
+                {/* Custom Host Editor Input */}
+                {hostMode === 'custom' && (isEditingCustomHost || !customHost) && (
+                  <div className="flex gap-2 mt-2 items-center">
+                    <input
+                      type="text"
+                      value={customHost}
+                      onChange={(e) => setCustomHost(e.target.value)}
+                      placeholder="e.g. https://my-tunnel.loca.lt or http://192.168.1.50:5174"
+                      className="flex-1 bg-[#1C1F26] border border-[#353C48] rounded-[4px] px-2.5 py-1 text-[11px] text-white font-mono outline-none focus:border-[#3B82F6]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCustomHostSave(customHost)}
+                      className="px-2.5 py-1 bg-[#3B82F6] text-white text-[11px] font-medium rounded hover:bg-[#2563EB] cursor-pointer flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3" /> Save
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Share URL text panel */}
               <div className="flex flex-col gap-1.5">

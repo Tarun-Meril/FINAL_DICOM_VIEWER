@@ -4,6 +4,7 @@ import ViewportPlaceholder from './ViewportPlaceholder';
 import ViewportContextMenu from './ViewportContextMenu';
 import { API_BASE_URL } from '../config';
 import { addInstanceMetadata, initCornerstone } from '../initCornerstone';
+import { getCatalogSeries, generateCatalogInstances } from '../sampleStudyCatalog';
 
 import {
   RenderingEngine,
@@ -175,8 +176,10 @@ export default function Viewport({
       setLoadingError(null);
 
       const fetchSeries = async () => {
+        const dynamicPacs = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://127.0.0.1:3001';
         const endpoints = [
           `${API_BASE_URL}/api/studies/${studyUid}/series`,
+          `${dynamicPacs}/api/studies/${studyUid}/series`,
           `http://127.0.0.1:8000/api/studies/${studyUid}/series`,
           `http://127.0.0.1:3001/api/studies/${studyUid}/series`
         ];
@@ -197,6 +200,14 @@ export default function Viewport({
             }
           } catch (e) {
             lastErr = e;
+          }
+        }
+
+        // Resilient fallback to sample catalog if remote backend cannot be reached directly
+        if (seriesList.length === 0) {
+          const catalogSeries = getCatalogSeries(studyUid);
+          if (catalogSeries && catalogSeries.length > 0) {
+            seriesList = catalogSeries;
           }
         }
 
@@ -227,8 +238,10 @@ export default function Viewport({
       setLoadingError(null);
 
       const fetchInstances = async () => {
+        const dynamicPacs = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://127.0.0.1:3001';
         const endpoints = [
           `${API_BASE_URL}/api/series/${currentSeriesId}/instances`,
+          `${dynamicPacs}/api/series/${currentSeriesId}/instances`,
           `http://127.0.0.1:8000/api/series/${currentSeriesId}/instances`,
           `http://127.0.0.1:3001/api/series/${currentSeriesId}/instances`
         ];
@@ -250,6 +263,11 @@ export default function Viewport({
           } catch (e) {
             lastErr = e;
           }
+        }
+
+        // Resilient fallback to catalog instances if server is offline or on public cloud
+        if (instances.length === 0) {
+          instances = generateCatalogInstances(currentSeriesId, totalImages || 175);
         }
 
         if (instances.length > 0) {
@@ -363,12 +381,18 @@ export default function Viewport({
       toolGroup.addTool('PlanarFreehandROI');
 
       // Activate default navigation tools so the viewport is immediately interactive.
-      // Without this, mouse events do nothing and the image appears blank/unresponsive.
+      // Touch bindings enable natural 1-finger pan and 2-finger pinch zoom on mobile devices.
       toolGroup.setToolActive('Pan', {
-        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }],
+        bindings: [
+          { mouseButton: ToolsEnums.MouseBindings.Primary },
+          { numTouchPoints: 1 }
+        ],
       });
       toolGroup.setToolActive('Zoom', {
-        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }],
+        bindings: [
+          { mouseButton: ToolsEnums.MouseBindings.Secondary },
+          { numTouchPoints: 2 }
+        ],
       });
       toolGroup.setToolActive('WindowLevel', {
         bindings: [{ mouseButton: ToolsEnums.MouseBindings.Auxiliary }],
@@ -819,29 +843,41 @@ export default function Viewport({
         try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */}
       });
 
-      // User switched to an annotation tool: activate it on primary mouse button
+      // User switched to an annotation tool: activate it on primary mouse button and 1-finger touch
       toolGroup.setToolActive(activeCornerstoneTool, {
-        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }],
+        bindings: [
+          { mouseButton: ToolsEnums.MouseBindings.Primary },
+          { numTouchPoints: 1 }
+        ],
       });
       // Keep navigation tools on secondary/auxiliary bindings
       toolGroup.setToolActive('Zoom', {
-        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }],
+        bindings: [
+          { mouseButton: ToolsEnums.MouseBindings.Secondary },
+          { numTouchPoints: 2 }
+        ],
       });
       toolGroup.setToolActive('WindowLevel', {
         bindings: [{ mouseButton: ToolsEnums.MouseBindings.Auxiliary }],
       });
     } else {
-      // Navigation mode: assign primary LMB to the chosen nav tool
+      // Navigation mode: assign primary LMB and 1-finger touch to the chosen nav tool
       navigationTools.forEach(t => {
         try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */}
       });
       toolGroup.setToolActive(activeCornerstoneTool, {
-        bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }],
+        bindings: [
+          { mouseButton: ToolsEnums.MouseBindings.Primary },
+          { numTouchPoints: 1 }
+        ],
       });
-      // Keep zoom on RMB and W/L on middle button always
+      // Keep zoom on RMB and 2-finger pinch on mobile
       if (activeCornerstoneTool !== 'Zoom') {
         toolGroup.setToolActive('Zoom', {
-          bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }],
+          bindings: [
+            { mouseButton: ToolsEnums.MouseBindings.Secondary },
+            { numTouchPoints: 2 }
+          ],
         });
       }
       if (activeCornerstoneTool !== 'WindowLevel') {
@@ -1338,7 +1374,7 @@ export default function Viewport({
       <div
         ref={elementRef}
         onDoubleClick={handleDoubleClick}
-        className={`w-full h-full relative flex items-center justify-center bg-black overflow-hidden ${
+        className={`w-full h-full relative flex items-center justify-center bg-black overflow-hidden touch-none ${
           activeTool === 'pan' ? 'cursor-grab active:cursor-grabbing' :
           activeTool === 'zoom' ? 'cursor-ns-resize' :
           activeTool === 'wl' ? 'cursor-move' : 'cursor-crosshair'

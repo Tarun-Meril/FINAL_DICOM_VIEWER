@@ -11,8 +11,26 @@ import ManageSharesDialog from './components/ManageSharesDialog';
 import PasswordPrompt from './components/PasswordPrompt';
 import ErrorFindingModal from './components/ErrorFindingModal';
 import { API_BASE_URL } from './config';
-import { clinicalFacade } from './clinical';
-const SHARE_API_BASE_URL = import.meta.env.VITE_SHARE_API_BASE_URL || 'http://localhost:3001';
+import { getCatalogStudy, getCatalogSeries } from './sampleStudyCatalog';
+
+const getDynamicShareApiUrl = () => {
+  const envUrl = import.meta.env.VITE_SHARE_API_BASE_URL;
+  if (typeof window !== 'undefined' && window.location) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const apiHost = searchParams.get('apiHost');
+    if (apiHost) return apiHost.replace(/\/+$/, '');
+
+    const hostname = window.location.hostname;
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      const isIpOrLocal = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.endsWith('.local');
+      if (isIpOrLocal) {
+        return `${window.location.protocol}//${hostname}:3001`;
+      }
+    }
+  }
+  return envUrl || 'http://localhost:3001';
+};
+const SHARE_API_BASE_URL = getDynamicShareApiUrl();
 
 export interface AppProps {
   initialStudyUid?: string;
@@ -111,33 +129,88 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
       if (password) {
         headers['x-share-password'] = password;
       }
-      const res = await fetch(`${SHARE_API_BASE_URL}/api/share/${token}`, { headers });
-      const data = await res.json();
 
-      if (res.status === 401 && data.passwordRequired) {
-        setPasswordPromptToken(token);
-        setPasswordPromptError(password ? 'Invalid password. Please try again.' : '');
-        setShowPasswordPrompt(true);
-        return;
+      let validatedData: any = null;
+
+      // 1. Try fetching from PACS Share API
+      try {
+        const res = await fetch(`${SHARE_API_BASE_URL}/api/share/${token}`, { headers });
+        if (res.status === 401) {
+          const data = await res.json();
+          if (data.passwordRequired) {
+            setPasswordPromptToken(token);
+            setPasswordPromptError(password ? 'Invalid password. Please try again.' : '');
+            setShowPasswordPrompt(true);
+            return;
+          }
+        }
+        if (res.ok) {
+          validatedData = await res.json();
+        }
+      } catch (e) {
+        console.warn('[MerilView] API share validate failed, falling back to Supabase directly:', e);
       }
 
-      if (!res.ok) {
-        showToast(data.error || 'Access denied', 'error');
-        alert(`Access Denied: ${data.error || 'Invalid share link'}`);
+      // 2. Direct Supabase Fallback (if backend returns non-200 or is unreachable on mobile/cloud)
+      if (!validatedData) {
+        try {
+          const supabaseUrl = 'https://gjtvxsuorghxqqazlszj.supabase.co';
+          const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdHZ4c3VvcmdoeHFxYXpsc3pqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExNzI2MzIsImV4cCI6MjEwNjc0ODYzMn0.gPrVjurPQGVJ3CKh6w28lDdjuTZdNNtbcSh0AocnquQ';
+          const sbRes = await fetch(`${supabaseUrl}/rest/v1/share_links?token=eq.${encodeURIComponent(token)}&select=*`, {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`
+            }
+          });
+          if (sbRes.ok) {
+            const rows = await sbRes.json();
+            if (Array.isArray(rows) && rows.length > 0) {
+              const row = rows[0];
+              if (row.revoked) {
+                showToast('This share link has been revoked', 'error');
+                alert('Access Denied: This share link has been revoked.');
+                return;
+              }
+              if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+                showToast('This share link has expired', 'error');
+                alert('Access Denied: This share link has expired.');
+                return;
+              }
+              if (row.password_hash) {
+                if (!password) {
+                  setPasswordPromptToken(token);
+                  setShowPasswordPrompt(true);
+                  return;
+                }
+              }
+              validatedData = {
+                study_uid: row.study_uid,
+                permissions: row.permissions || { view: true, measure: true, annotation: true, download: false }
+              };
+            }
+          }
+        } catch (sbErr) {
+          console.error('[MerilView] Direct Supabase query failed:', sbErr);
+        }
+      }
+
+      if (!validatedData) {
+        showToast('Invalid or expired share link', 'error');
+        alert('Access Denied: Invalid or expired share link');
         return;
       }
 
       showToast('Study Access Granted', 'success');
-      setSharePermissions(data.permissions);
+      setSharePermissions(validatedData.permissions);
       setActiveShareToken(token);
       setShowPasswordPrompt(false);
       setPasswordPromptError('');
 
-      loadStudyAndSeries(data.study_uid);
+      loadStudyAndSeries(validatedData.study_uid);
     } catch (err: any) {
       console.error('Failed to validate share link:', err);
-      showToast('PACS share validation server is offline', 'error');
-      alert('Error: Connection to PACS share validation server failed.');
+      showToast('Connection to share validation failed', 'error');
+      alert('Error: Connection to share validation service failed.');
     }
   };
 
@@ -216,8 +289,10 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
   const [pacsStudy, setPacsStudy] = useState<any>(null);
   const [pacsSeriesList, setPacsSeriesList] = useState<any[]>([]);
 
-  // Layout & sidebar panel visibility toggles
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState<boolean>(true);
+  // Layout & sidebar panel visibility toggles (defaults closed on mobile for 100% canvas area)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? window.innerWidth >= 768 : true;
+  });
   const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(false);
   const [toolbarOpen, setToolbarOpen] = useState<boolean>(true);
   const [metadataOverlayOpen, setMetadataOverlayOpen] = useState<boolean>(true);
@@ -288,7 +363,14 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
     };
 
     try {
-      const studyData = await fetchWithFallback(`/api/studies/${studyUid}`);
+      let studyData = await fetchWithFallback(`/api/studies/${studyUid}`);
+      if (!studyData) {
+        const catalogStudy = getCatalogStudy(studyUid);
+        if (catalogStudy) {
+          studyData = { data: catalogStudy };
+        }
+      }
+
       if (studyData) {
         const item = studyData.data || studyData;
         if (item && (item.study_instance_uid || item.studyInstanceUid || item.patient_name || item.patientName)) {
@@ -315,7 +397,14 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
         currentStudyUidRef.current = null;
       }
 
-      const seriesData = await fetchWithFallback(`/api/studies/${studyUid}/series`);
+      let seriesData = await fetchWithFallback(`/api/studies/${studyUid}/series`);
+      if (!seriesData) {
+        const catalogSeries = getCatalogSeries(studyUid);
+        if (catalogSeries && catalogSeries.length > 0) {
+          seriesData = { data: catalogSeries };
+        }
+      }
+
       if (seriesData) {
         const rawList = seriesData.data || seriesData;
         const seriesArray = Array.isArray(rawList) ? rawList : (Array.isArray(seriesData) ? seriesData : []);
@@ -981,7 +1070,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
 
       {/* Main Workspace Row */}
       <div className="flex-1 flex w-full overflow-hidden min-h-0">
-        {/* Left Filmstrip & Patient Profile Sidebar (320px) */}
+        {/* Left Filmstrip & Patient Profile Sidebar (320px on desktop, drawer on mobile) */}
         {leftSidebarOpen && (
           <LeftSidebar 
             study={pacsStudy} 
@@ -990,6 +1079,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
             onLoadSeries={handleLoadSeries}
             onShareStudy={() => setIsShareDialogOpen(true)}
             onCopyShareLink={handleCopyShareLink}
+            onCloseMobile={() => setLeftSidebarOpen(false)}
           />
         )}
 

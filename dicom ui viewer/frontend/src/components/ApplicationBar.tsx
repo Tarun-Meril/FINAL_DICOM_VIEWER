@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Settings, ChevronRight, X } from 'lucide-react';
+import { Bell, Settings, ChevronRight, X, Menu, FolderClosed } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 import logo from '../logo.png';
 
@@ -75,6 +75,7 @@ export default function ApplicationBar({
 
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Real PACS studies loaded state
   const [pacsStudiesList, setPacsStudiesList] = useState<any[]>([]);
@@ -695,24 +696,45 @@ export default function ApplicationBar({
     >
       
       {/* SECTION 1 - Application Identity */}
-      <div className="flex items-center no-drag-region ml-2 shrink-0 gap-[8px]">
+      <div className="flex items-center no-drag-region ml-2 shrink-0 gap-[6px] sm:gap-[8px]">
         <img src={logo} alt="Meril Logo" style={{ height: '22px', width: 'auto', display: 'block' }} />
+        
+        {/* Return to PACS */}
         <button
           onClick={() => {
             if (onNavigateToPacs) onNavigateToPacs();
             else onActionCommand('openPacs');
           }}
           title="Return to PACS Study Browser (Ctrl+B)"
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11.5px] font-semibold bg-[#1e293b] text-[#38bdf8] hover:bg-[#334155] hover:text-white border border-[#334155] transition-colors cursor-pointer"
+          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] sm:text-[11.5px] font-semibold bg-[#1e293b] text-[#38bdf8] hover:bg-[#334155] hover:text-white border border-[#334155] transition-colors cursor-pointer"
         >
           <span>←</span>
-          <span>Back to PACS</span>
+          <span className="hidden xs:inline">PACS</span>
+        </button>
+
+        {/* Mobile Series/Study Sidebar Drawer Button */}
+        <button
+          onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
+          title="Toggle Study & Series Drawer"
+          className="md:hidden flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-[#1e293b] text-[#38bdf8] hover:bg-[#334155] border border-[#334155] transition-colors cursor-pointer"
+        >
+          <FolderClosed className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Series</span>
+        </button>
+
+        {/* Mobile Menu Dropdown Toggle */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          title="Open Application Menu"
+          className="md:hidden flex items-center justify-center p-1 rounded text-[#C9D1D9] hover:bg-[#334155] border border-[#334155] transition-colors cursor-pointer"
+        >
+          <Menu className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* SECTION 2 - Desktop Menu */}
+      {/* SECTION 2 - Desktop Menu (Hidden on mobile <768px, shown on desktop >=768px) */}
       <div 
-        className="flex items-center gap-[12px] ml-3 no-drag-region shrink-0"
+        className="hidden md:flex items-center gap-[12px] ml-3 no-drag-region shrink-0"
         onMouseLeave={closeAllMenus}
       >
         {menus.map((menu, mIndex) => {
@@ -1119,6 +1141,49 @@ export default function ApplicationBar({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Mobile Menu Dropdown Panel */}
+      {mobileMenuOpen && (
+        <>
+          <div 
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/60 z-[998] md:hidden backdrop-blur-xs"
+          />
+          <div className="absolute top-[34px] left-2 right-2 max-h-[82vh] overflow-y-auto bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-2xl p-3 z-[999] md:hidden text-white flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#353C48]">
+              <span className="text-[12px] font-bold uppercase tracking-wider text-[#8B949E]">Application Menu</span>
+              <button 
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1 rounded hover:bg-[#252B34] text-[#8B949E] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {menus.map((m) => (
+                <div key={m.name} className="flex flex-col gap-1 bg-[#14171C] p-2 rounded border border-[#252B34]">
+                  <span className="text-[11px] font-bold text-[#38bdf8] uppercase tracking-wider">{m.name}</span>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    {m.items.filter(it => it.type !== 'separator' && it.label).slice(0, 4).map((it, itemIdx) => (
+                      <button
+                        key={`${it.label}-${itemIdx}`}
+                        disabled={it.disabled}
+                        onClick={() => {
+                          if (it.onClick) it.onClick();
+                          setMobileMenuOpen(false);
+                        }}
+                        className="text-left text-[11px] py-1 px-1.5 rounded hover:bg-[#252B34] text-[#C9D1D9] hover:text-white truncate"
+                      >
+                        {it.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
     </div>

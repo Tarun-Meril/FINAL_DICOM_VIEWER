@@ -269,7 +269,7 @@ export class ServiceManager {
       const env = {
         ...process.env,
         PORT: '3001',
-        HOST: '127.0.0.1',
+        HOST: process.env.SERVER_HOST || '0.0.0.0',
         DB_PATH: this.paths.dbFile,
         STORAGE_DIR: this.paths.dicom,
         LOG_DIR: this.paths.logs,

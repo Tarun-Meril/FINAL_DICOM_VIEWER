@@ -376,17 +376,17 @@ export default function ViewerToolbar({
       role="toolbar"
       aria-label="Viewer Toolbar"
       style={{ ...(SCALE as React.CSSProperties), height: 'var(--s-height)' }}
-      className="flex items-center w-full bg-[#F7F8FA] border-b border-[#D9DCE3] select-none shrink-0"
+      className="flex items-center w-full bg-[#F7F8FA] border-b border-[#D9DCE3] select-none shrink-0 overflow-x-auto no-scrollbar touch-pan-x"
     >
-      {/* All groups share available width equally via flex-1 */}
-      <div className="flex items-center flex-nowrap w-full h-full px-1">
+      {/* All groups share available width equally on desktop; on mobile/tablet smooth horizontal scrolling */}
+      <div className="flex items-center flex-nowrap w-full h-full px-1 min-w-max md:min-w-0">
         {groups.map((g, gi) => {
           const anyHiddenActive = g.extra.some(t => isActive(t.id));
 
           return (
             <React.Fragment key={g.title}>
-              {/* ── group: flex-1 ensures equal width sharing ──── */}
-              <div className="relative flex flex-col items-center justify-center flex-1 min-w-0 overflow-visible">
+              {/* ── group: flex-1 ensures equal width sharing on desktop, readable width on mobile ──── */}
+              <div className="relative flex flex-col items-center justify-center flex-1 min-w-[155px] md:min-w-0 overflow-visible">
                 {/* buttons row */}
                 <div
                   className="flex items-center w-full overflow-visible"
