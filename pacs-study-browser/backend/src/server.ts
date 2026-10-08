@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import { ENV } from './config/env';
 import apiRoutes from './routes/api';
 import { errorHandler } from './middleware/errorHandler';
@@ -16,47 +18,67 @@ app.use('/api', rateLimiter(50000, 60 * 1000));
 // Middleware
 app.use(cors({
   origin: '*', // Allow all origins for development
+  exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Type', 'x-share-password'],
 }));
 app.use(express.raw({ type: 'application/dicom', limit: '100mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.get('/', (req, res) => {
-  res.send(`
-    <! climate-html>
-    <html>
-      <head>
-        <title>MerilView PACS Service Status</title>
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-          .card { background: #1e293b; border: 1px solid #334155; padding: 2rem; rounded: 12px; max-width: 480px; width: 100%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); border-radius: 12px; text-align: center; }
-          h1 { color: #38bdf8; font-size: 1.25rem; margin-bottom: 0.5rem; text-transform: uppercase; tracking: 1px; }
-          p { font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem; }
-          .btn-group { display: flex; flex-direction: column; gap: 0.75rem; }
-          a.btn { display: block; padding: 0.75rem 1rem; background: #0284c7; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
-          a.btn:hover { background: #0369a1; }
-          a.btn-secondary { background: #334155; color: #f1f5f9; }
-          a.btn-secondary:hover { background: #475569; }
-          .badge { display: inline-block; padding: 4px 8px; background: #166534; color: #4ade80; font-size: 0.75rem; font-weight: 700; border-radius: 4px; margin-bottom: 1rem; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="badge">● REST API ACTIVE (Port 3001)</div>
-          <h1>PACS Backend API Server</h1>
-          <p>Port 3001 serves REST API endpoints and DICOM services. To access the web user interfaces, use the links below:</p>
-          <div class="btn-group">
-            <a href="http://localhost:3005" class="btn">Open PACS Study Browser UI (Port 3005) →</a>
-            <a href="http://localhost:5174" class="btn btn-secondary">Open DICOM Viewer UI (Port 5174) →</a>
-          </div>
-        </div>
-      </body>
-    </html>
-  `);
-});
-
+// API Routes
 app.use('/api', apiRoutes);
+
+// Frontend Web UI Static Files & SPA Routing
+const distCandidates = [
+  path.resolve(__dirname, '../../../dicom ui viewer/frontend/dist'),
+  path.resolve(__dirname, '../../dicom ui viewer/frontend/dist'),
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(__dirname, '../frontend/dist'),
+  path.resolve(process.cwd(), 'dicom ui viewer/frontend/dist'),
+  path.resolve(process.cwd(), '../dicom ui viewer/frontend/dist'),
+  path.resolve(process.cwd(), 'dist'),
+];
+const frontendDist = distCandidates.find(p => fs.existsSync(p));
+
+if (frontendDist) {
+  console.log(`[PACS Backend] Serving DICOM Viewer web UI from: ${frontendDist}`);
+  app.use(express.static(frontendDist));
+  
+  // SPA routing for web application routes
+  app.get(['/share/*', '/viewer/*', '/pacs/*', '/share', '/viewer', '/pacs'], (req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+} else {
+  // Fallback status card if dist is not built yet
+  app.get('/', (req, res) => {
+    res.send(`
+      <! climate-html>
+      <html>
+        <head>
+          <title>MerilView PACS Service Status</title>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: #1e293b; border: 1px solid #334155; padding: 2rem; rounded: 12px; max-width: 480px; width: 100%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); border-radius: 12px; text-align: center; }
+            h1 { color: #38bdf8; font-size: 1.25rem; margin-bottom: 0.5rem; text-transform: uppercase; tracking: 1px; }
+            p { font-size: 0.9rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.5rem; }
+            .btn-group { display: flex; flex-direction: column; gap: 0.75rem; }
+            a.btn { display: block; padding: 0.75rem 1rem; background: #0284c7; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
+            a.btn:hover { background: #0369a1; }
+            a.btn-secondary { background: #334155; color: #f1f5f9; }
+            a.btn-secondary:hover { background: #475569; }
+            .badge { display: inline-block; padding: 4px 8px; background: #166534; color: #4ade80; font-size: 0.75rem; font-weight: 700; border-radius: 4px; margin-bottom: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="badge">● REST API ACTIVE (Port 3001)</div>
+            <h1>PACS Backend API Server</h1>
+            <p>Port 3001 serves REST API endpoints and DICOM services.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+}
 
 // Error handling
 app.use(errorHandler);

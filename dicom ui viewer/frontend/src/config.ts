@@ -5,6 +5,13 @@ export const getDynamicApiBaseUrl = (): string => {
     if (apiHost) return apiHost.replace(/\/+$/, '');
 
     const hostname = window.location.hostname;
+    const port = window.location.port;
+
+    // If served directly from port 3001 (Node PACS backend)
+    if (port === '3001') {
+      return `${window.location.protocol}//${hostname}:3001`;
+    }
+
     if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
       const isIpOrLocal = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.endsWith('.local');
       if (isIpOrLocal) {

@@ -72,7 +72,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   const [showConfirmRegenerate, setShowConfirmRegenerate] = useState<boolean>(false);
 
   // Host Destination configuration
-  const defaultLanUrl = 'http://10.42.0.130:5174';
+  const defaultLanUrl = import.meta.env.VITE_SHARE_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://10.42.0.130:3001');
   const defaultCloudUrl = 'https://pacs-dicom.vercel.app';
   const [hostMode, setHostMode] = useState<'lan' | 'cloud' | 'desktop' | 'custom'>(() => {
     return (localStorage.getItem('merilview_share_host_mode') as any) || 'lan';

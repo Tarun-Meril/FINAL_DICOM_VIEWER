@@ -4,6 +4,36 @@ import { db } from '../database/connection';
 import fs from 'fs';
 import { ENV } from '../config/env';
 
+let cachedSupabaseStatus = 'online';
+let lastSupabaseCheckTime = 0;
+let isCheckingSupabase = false;
+
+function refreshSupabaseStatusAsync() {
+  if (isCheckingSupabase) return;
+  if (!ENV.SUPABASE.URL || ENV.SUPABASE.URL.includes('placeholder')) {
+    cachedSupabaseStatus = 'local mode (unconfigured)';
+    return;
+  }
+  isCheckingSupabase = true;
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+  const checkPromise = supabase.from('share_links').select('id').limit(1);
+  Promise.race([checkPromise, timeoutPromise])
+    .then((result: any) => {
+      if (result && !result.error) {
+        cachedSupabaseStatus = 'online';
+      } else {
+        cachedSupabaseStatus = `offline: ${result?.error?.message || 'unknown error'}`;
+      }
+    })
+    .catch((err: any) => {
+      cachedSupabaseStatus = `offline: ${err?.message || err}`;
+    })
+    .finally(() => {
+      lastSupabaseCheckTime = Date.now();
+      isCheckingSupabase = false;
+    });
+}
+
 export class HealthController {
   /**
    * GET /api/health
@@ -21,23 +51,14 @@ export class HealthController {
       databaseStatus = 'unhealthy';
     }
 
-    // 2. Verify Supabase Cloud connection status
-    let supabaseStatus = 'not configured';
-    if (ENV.SUPABASE.URL && !ENV.SUPABASE.URL.includes('placeholder')) {
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500));
-        const checkPromise = supabase.from('share_links').select('id').limit(1);
-        const result = await Promise.race([checkPromise, timeoutPromise]) as any;
-        if (!result.error) {
-          supabaseStatus = 'online';
-        } else {
-          supabaseStatus = `offline: ${result.error.message}`;
-        }
-      } catch (err: any) {
-        supabaseStatus = `offline: ${err.message || err}`;
-      }
-    } else {
+    // 2. Verify Supabase Cloud connection status (non-blocking)
+    let supabaseStatus = cachedSupabaseStatus;
+    if (!ENV.SUPABASE.URL || ENV.SUPABASE.URL.includes('placeholder')) {
       supabaseStatus = 'local mode (unconfigured)';
+    } else {
+      if (Date.now() - lastSupabaseCheckTime > 30000) {
+        refreshSupabaseStatusAsync();
+      }
     }
 
     // 3. Verify DICOM Upload directory file write access permissions

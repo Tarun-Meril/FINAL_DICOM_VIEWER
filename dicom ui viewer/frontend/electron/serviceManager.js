@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { app, shell } from 'electron';
 
@@ -22,7 +22,7 @@ function copyDirRecursiveSync(source, target) {
       if (!fs.existsSync(destPath)) {
         try {
           fs.copyFileSync(srcPath, destPath);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -34,6 +34,7 @@ export class ServiceManager {
     this.pacsProcess = null;
     this.backendProcess = null;
     this.isShuttingDown = false;
+    this.startupPromise = null;
 
     // Cross-platform persistent clinical data directory structure
     let programDataRoot;
@@ -141,7 +142,7 @@ export class ServiceManager {
         let existingFiles = [];
         try {
           existingFiles = fs.readdirSync(this.paths.dicom);
-        } catch (_) {}
+        } catch (_) { }
 
         if (existingFiles.length === 0) {
           const sampleSourceDirs = [
@@ -206,18 +207,52 @@ export class ServiceManager {
     });
   }
 
-  async startServices() {
+  async freePortIfDead(port) {
+    if (process.platform !== 'win32') return;
+    try {
+      const netstatOutput = execSync(`netstat -ano -p tcp | findstr :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const lines = netstatOutput.split('\r\n').map(l => l.trim()).filter(l => l.includes('LISTENING'));
+      for (const line of lines) {
+        const parts = line.split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && pid !== '0' && Number(pid) !== process.pid) {
+          console.log(`[ServiceManager] Terminating unresponsive zombie process ${pid} occupying port ${port}...`);
+          try {
+            execSync(`taskkill /pid ${pid} /f /t`, { stdio: 'ignore' });
+            await new Promise(r => setTimeout(r, 400));
+          } catch (_) { }
+        }
+      }
+    } catch (_) {
+      // Port is free or findstr returned no match
+    }
+  }
+
+  startServices() {
+    if (this.startupPromise) {
+      return this.startupPromise;
+    }
+
+    this.startupPromise = this._startServicesInternal().finally(() => {
+      this.startupPromise = null;
+    });
+
+    return this.startupPromise;
+  }
+
+  async _startServicesInternal() {
     console.log('[ServiceManager] Checking health of local services...');
-    
+
     // 1. Check PACS Backend (Port 3001)
     let pacsHealthy = await this.checkHealth('http://127.0.0.1:3001/api/health', 1500);
     if (!pacsHealthy) {
       console.log('[ServiceManager] Port 3001 not responding. Spawning PACS Study Browser backend service...');
+      await this.freePortIfDead(3001);
       this.spawnPacsBackend();
-      // Wait up to 3 seconds for port 3001 to become ready
-      for (let i = 0; i < 6; i++) {
+      // Wait up to 10 seconds (20 iterations * 500ms) for port 3001 to become ready
+      for (let i = 0; i < 20; i++) {
         await new Promise(r => setTimeout(r, 500));
-        pacsHealthy = await this.checkHealth('http://127.0.0.1:3001/api/health', 1000);
+        pacsHealthy = await this.checkHealth('http://127.0.0.1:3001/api/health', 1500);
         if (pacsHealthy) {
           console.log('[ServiceManager] PACS Study Browser backend is now online on port 3001.');
           break;
@@ -243,10 +278,17 @@ export class ServiceManager {
     } else {
       console.log('[ServiceManager] DICOM Viewer backend is already running on port 8000.');
     }
+
+    return { pacs: pacsHealthy, backend: viewerHealthy || pacsHealthy };
   }
 
   spawnPacsBackend() {
     try {
+      if (this.pacsProcess && !this.pacsProcess.killed) {
+        console.log(`[ServiceManager] PACS Backend process is already active (PID: ${this.pacsProcess.pid})`);
+        return;
+      }
+
       const candidates = [
         process.resourcesPath ? path.join(process.resourcesPath, 'pacs-backend', 'dist', 'server.js') : null,
         path.resolve(this.baseDir, '../../../pacs-study-browser/backend/dist/server.js'),
@@ -255,7 +297,7 @@ export class ServiceManager {
       ].filter(Boolean);
 
       const scriptPath = candidates.find(p => fs.existsSync(p));
-      
+
       let backendDir = path.resolve(this.baseDir, '../../../pacs-study-browser/backend');
       if (app.isPackaged || !fs.existsSync(backendDir)) {
         const packagedBackend = process.resourcesPath ? path.join(process.resourcesPath, 'pacs-backend') : null;
@@ -275,15 +317,22 @@ export class ServiceManager {
         LOG_DIR: this.paths.logs,
         TEMP_DIR: this.paths.temp,
         BACKUP_DIR: this.paths.backups,
+        NODE_PATH: path.join(backendDir, 'node_modules'),
       };
 
       const logStream = fs.createWriteStream(this.paths.pacsLog, { flags: 'a' });
 
       if (scriptPath && scriptPath.endsWith('.js')) {
-        this.pacsProcess = spawn(process.execPath, [scriptPath], {
+        let scriptArg = scriptPath;
+        if (backendDir && scriptPath.startsWith(backendDir)) {
+          scriptArg = path.relative(backendDir, scriptPath) || scriptPath;
+        }
+        console.log(`[ServiceManager] Launching PACS Backend process: exec=${process.execPath}, scriptArg=${scriptArg}, cwd=${backendDir}`);
+        this.pacsProcess = spawn(process.execPath, [scriptArg], {
           cwd: backendDir,
           env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
-          stdio: ['ignore', 'pipe', 'pipe']
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
         });
       } else {
         // Dev fallback: use npm run dev
@@ -300,6 +349,7 @@ export class ServiceManager {
         this.pacsProcess.stderr.pipe(logStream);
 
         this.pacsProcess.on('exit', (code, signal) => {
+          this.pacsProcess = null;
           if (!this.isShuttingDown) {
             console.warn(`[ServiceManager] PACS Backend exited unexpectedly with code ${code}, signal ${signal}`);
           }
@@ -341,7 +391,7 @@ export class ServiceManager {
             instancesDir = cand;
             break;
           }
-        } catch {}
+        } catch { }
       }
 
       const env = {
@@ -390,16 +440,29 @@ export class ServiceManager {
   }
 
   async getStatus() {
-    let pacs = await this.checkHealth('http://127.0.0.1:3001/api/health', 2500);
-    if (!pacs) {
-      await new Promise(r => setTimeout(r, 600));
-      pacs = await this.checkHealth('http://127.0.0.1:3001/api/health', 2500);
+    if (this.startupPromise) {
+      console.log('[ServiceManager] getStatus awaiting active startupPromise...');
+      try {
+        await this.startupPromise;
+      } catch (err) {
+        console.warn('[ServiceManager] Note while awaiting startupPromise:', err);
+      }
     }
 
-    let backend = await this.checkHealth('http://127.0.0.1:8000/api/health', 2500);
+    let pacs = await this.checkHealth('http://127.0.0.1:3001/api/health', 2500);
+    // If not immediately healthy, gracefully poll for up to 4 seconds
+    if (!pacs) {
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        pacs = await this.checkHealth('http://127.0.0.1:3001/api/health', 1500);
+        if (pacs) break;
+      }
+    }
+
+    let backend = await this.checkHealth('http://127.0.0.1:8000/api/health', 2000);
     if (!backend) {
-      await new Promise(r => setTimeout(r, 600));
-      backend = await this.checkHealth('http://127.0.0.1:8000/api/health', 2500);
+      await new Promise(r => setTimeout(r, 400));
+      backend = await this.checkHealth('http://127.0.0.1:8000/api/health', 1500);
     }
 
     let error = null;

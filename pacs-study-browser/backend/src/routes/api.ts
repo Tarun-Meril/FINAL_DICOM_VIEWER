@@ -49,6 +49,7 @@ router.post('/studies/upload', upload.array('files'), StudyController.uploadDico
 router.post('/upload', upload.array('files'), StudyController.uploadDicom);
 router.post('/studies/select', (req, res) => res.json({ success: true, timestamp: Date.now() }));
 router.get('/instances/:sopInstanceUid/file', StudyController.downloadInstance);
+router.get('/instances/:sopInstanceUid/png', StudyController.getInstancePng);
 router.get('/database/validate', StudyController.validateDatabase);
 
 // Share Study Module Routes

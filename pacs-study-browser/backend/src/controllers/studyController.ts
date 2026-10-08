@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import http from 'http';
 import { db } from '../database/connection';
 import { PacsClient, QueryFilters } from '../services/pacsClient';
 import { DicomService } from '../services/dicomService';
@@ -360,12 +361,36 @@ export class StudyController {
 
       res.setHeader('Content-Type', 'application/dicom');
       res.setHeader('Content-Disposition', `attachment; filename="${sopInstanceUid}.dcm"`);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
       
       const fileStream = fs.createReadStream(instance.filePath);
       fileStream.pipe(res);
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
+  }
+
+  public static async getInstancePng(req: Request, res: Response): Promise<void> {
+    const { sopInstanceUid } = req.params;
+    const wc = req.query.wc ? `&wc=${encodeURIComponent(String(req.query.wc))}` : '';
+    const ww = req.query.ww ? `&ww=${encodeURIComponent(String(req.query.ww))}` : '';
+    const targetUrl = `http://127.0.0.1:8000/api/instances/${sopInstanceUid}/png?${wc}${ww}`;
+
+    const httpReq = http.get(targetUrl, (proxyRes) => {
+      if (proxyRes.statusCode === 200) {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        proxyRes.pipe(res);
+      } else {
+        res.status(proxyRes.statusCode || 404).json({ success: false, message: 'PNG frame unavailable' });
+      }
+    });
+
+    httpReq.on('error', () => {
+      res.status(404).json({ success: false, message: 'Rendering service offline' });
+    });
   }
 
   public static async deleteStudy(req: Request, res: Response): Promise<void> {

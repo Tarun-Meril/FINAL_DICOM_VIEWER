@@ -110,17 +110,17 @@ export default function Viewport({
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const hasCenteredInitialCameraRef = useRef<boolean>(false);
-  
+
   const [cinePlaying, setCinePlaying] = useState(false);
   const [cineFps, setCineFps] = useState(15);
-  
+
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [showScrollTooltip, setShowScrollTooltip] = useState(false);
   const scrollbarTrackRef = useRef<HTMLDivElement>(null);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [viewportReady, setViewportReady] = useState(false);
-  
+
   const elementRef = useRef<HTMLDivElement>(null);
   const renderingEngineId = 'medview-rendering-engine';
   const viewportId = `viewport-${index}`;
@@ -409,7 +409,7 @@ export default function Viewport({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       accumulatedWheelDelta += e.deltaY > 0 ? 1 : -1;
-      
+
       if (wheelRaf !== null) return;
       wheelRaf = requestAnimationFrame(() => {
         wheelRaf = null;
@@ -649,7 +649,7 @@ export default function Viewport({
         meta.modality = modality;
         if (inst.window_center !== undefined || inst.windowCenter !== undefined) meta.windowCenter = inst.window_center ?? inst.windowCenter;
         if (inst.window_width !== undefined || inst.windowWidth !== undefined) meta.windowWidth = inst.window_width ?? inst.windowWidth;
-        
+
         if (inst.rescale_intercept !== undefined || inst.rescaleIntercept !== undefined) {
           meta.rescaleIntercept = inst.rescale_intercept ?? inst.rescaleIntercept;
         } else {
@@ -753,7 +753,7 @@ export default function Viewport({
     };
 
     checkAndSetStack();
-    
+
     return () => {
       isMounted = false;
       if (retryTimer) clearTimeout(retryTimer);
@@ -834,13 +834,13 @@ export default function Viewport({
 
     // Deactivate all annotation tools first
     annotationTools.forEach(t => {
-      try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */}
+      try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */ }
     });
 
     if (annotationTools.includes(activeCornerstoneTool)) {
       // Deactivate all navigation tools first so they don't steal primary binding
       navigationTools.forEach(t => {
-        try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */}
+        try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */ }
       });
 
       // User switched to an annotation tool: activate it on primary mouse button and 1-finger touch
@@ -863,7 +863,7 @@ export default function Viewport({
     } else {
       // Navigation mode: assign primary LMB and 1-finger touch to the chosen nav tool
       navigationTools.forEach(t => {
-        try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */}
+        try { toolGroup.setToolPassive(t); } catch (_) {/* ignore */ }
       });
       toolGroup.setToolActive(activeCornerstoneTool, {
         bindings: [
@@ -898,7 +898,7 @@ export default function Viewport({
             // Register tools metadata/state inside Cornerstone Annotation Manager
             data.forEach((item: any) => {
               const imageId = `wadouri:${API_BASE_URL}/api/instances/${item.sop_instance_uid}/file`;
-              
+
               let toolName = 'Length';
               if (item.tool_type === 'angle') toolName = 'Angle';
               else if (item.tool_type === 'cobb_angle') toolName = 'CobbAngle';
@@ -942,11 +942,11 @@ export default function Viewport({
       if (readOnly) return;
       const { annotation: ann } = evt.detail;
       const points = (ann.data?.handles?.points || []).map((p: any) => ({ x: p[0], y: p[1] }));
-      
+
       let tool_type = ann.metadata.toolName.toLowerCase().replace('roi', '');
       if (ann.metadata.toolName === 'PlanarFreehandROI') tool_type = 'freehand';
       if (ann.metadata.toolName === 'ArrowAnnotate') tool_type = 'arrow';
-      
+
       const payload = {
         id: ann.annotationUID,
         tool_type,
@@ -1266,7 +1266,7 @@ export default function Viewport({
             let numWw = Number(inst.window_width ?? inst.windowWidth);
             if (Array.isArray(inst.window_center ?? inst.windowCenter)) numWc = Number((inst.window_center ?? inst.windowCenter)[0]);
             if (Array.isArray(inst.window_width ?? inst.windowWidth)) numWw = Number((inst.window_width ?? inst.windowWidth)[0]);
-            
+
             if (!isNaN(numWc) && !isNaN(numWw) && numWw > 0) {
               const lower = numWc - numWw / 2;
               const upper = numWc + numWw / 2;
@@ -1366,19 +1366,17 @@ export default function Viewport({
       onContextMenu={handleContextMenu}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={`relative flex-1 h-full min-w-0 bg-[#070708] border select-none overflow-hidden outline-none ${
-        active ? 'border-[#2E7DFF] shadow-[inset_0_0_8px_rgba(46,125,255,0.3)]' : 'border-[#1E222B]'
-      }`}
+      className={`relative flex-1 h-full min-w-0 bg-[#070708] border select-none overflow-hidden outline-none ${active ? 'border-[#2E7DFF] shadow-[inset_0_0_8px_rgba(46,125,255,0.3)]' : 'border-[#1E222B]'
+        }`}
     >
       {/* Cornerstone element viewport mount target & WebGL DICOM Canvas */}
       <div
         ref={elementRef}
         onDoubleClick={handleDoubleClick}
-        className={`w-full h-full relative flex items-center justify-center bg-black overflow-hidden touch-none ${
-          activeTool === 'pan' ? 'cursor-grab active:cursor-grabbing' :
-          activeTool === 'zoom' ? 'cursor-ns-resize' :
-          activeTool === 'wl' ? 'cursor-move' : 'cursor-crosshair'
-        }`}
+        className={`w-full h-full relative flex items-center justify-center bg-black overflow-hidden touch-none ${activeTool === 'pan' ? 'cursor-grab active:cursor-grabbing' :
+            activeTool === 'zoom' ? 'cursor-ns-resize' :
+              activeTool === 'wl' ? 'cursor-move' : 'cursor-crosshair'
+          }`}
       >
       </div>
 
@@ -1414,9 +1412,8 @@ export default function Viewport({
         >
           {/* Scrollbar Thumb */}
           <div
-            className={`absolute w-3.5 rounded-full transition-all duration-75 shadow-md ${
-              isScrubbing ? 'bg-[#2E7DFF] scale-110' : 'bg-[#2E7DFF]/80 group-hover:bg-[#2E7DFF]'
-            }`}
+            className={`absolute w-3.5 rounded-full transition-all duration-75 shadow-md ${isScrubbing ? 'bg-[#2E7DFF] scale-110' : 'bg-[#2E7DFF]/80 group-hover:bg-[#2E7DFF]'
+              }`}
             style={{
               height: `${thumbHeight}px`,
               top: `calc(${thumbTopPercent}% - ${thumbTopOffset}px)`

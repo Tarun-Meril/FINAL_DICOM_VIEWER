@@ -4,8 +4,22 @@ import App from './App';
 import { Activity, RefreshCw, FolderOpen, AlertTriangle } from 'lucide-react';
 
 export function getInitialRoute(): { view: 'pacs' | 'viewer'; studyUid?: string } {
-  // 1. Check hash first (#/viewer/:uid or #/pacs)
   const hash = window.location.hash;
+  const pathname = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+
+  // 1. Check share links first (highest priority)
+  if (
+    hash.startsWith('#/share/') || 
+    hash.startsWith('#share/') || 
+    pathname.includes('/share/') || 
+    params.get('shareToken') || 
+    params.get('token')
+  ) {
+    return { view: 'viewer' };
+  }
+
+  // 2. Check hash (#/viewer/:uid or #/pacs)
   if (hash === '#/pacs' || hash === '#pacs') {
     return { view: 'pacs' };
   }
@@ -14,8 +28,7 @@ export function getInitialRoute(): { view: 'pacs' | 'viewer'; studyUid?: string 
     if (raw) return { view: 'viewer', studyUid: decodeURIComponent(raw) };
   }
 
-  // 2. Check pathname (/viewer/:uid or /pacs)
-  const pathname = window.location.pathname;
+  // 3. Check pathname (/viewer/:uid or /pacs)
   if (pathname === '/pacs' || pathname.startsWith('/pacs/')) {
     return { view: 'pacs' };
   }
@@ -25,14 +38,10 @@ export function getInitialRoute(): { view: 'pacs' | 'viewer'; studyUid?: string 
     if (uid) return { view: 'viewer', studyUid: decodeURIComponent(uid) };
   }
 
-  // 3. Check query parameters (?studyUID=... or ?shareToken=...)
-  const params = new URLSearchParams(window.location.search);
+  // 4. Check query parameters (?studyUID=...)
   const qStudy = params.get('studyUID') || params.get('studyUid');
   if (qStudy) {
     return { view: 'viewer', studyUid: qStudy };
-  }
-  if (pathname.includes('/share/') || params.get('shareToken') || params.get('token')) {
-    return { view: 'viewer' };
   }
 
   // Default initial route: PACS Study Browser!
@@ -134,22 +143,33 @@ export default function UnifiedApp() {
     const isElectron = !!window.electronAPI;
     if (isElectron && window.electronAPI.getServicesStatus) {
       setIsInitializing(true);
-      window.electronAPI.getServicesStatus()
-        .then((status) => {
+      const checkHealthWithRetry = async () => {
+        try {
+          let status = await window.electronAPI.getServicesStatus!();
+          // If not ready on initial check, wait 1.5s and re-verify before alerting the user
+          if (status && (!status.pacs || !status.backend)) {
+            await new Promise((r) => setTimeout(r, 1500));
+            status = await window.electronAPI.getServicesStatus!();
+          }
+
           if (status && (!status.pacs || !status.backend)) {
             if (status.error) {
               setStartupError({
                 service: !status.pacs ? 'PACS Archive Service' : 'FastAPI Backend',
-                message: status.error
+                message: status.error,
               });
             }
+          } else {
+            setStartupError(null);
           }
-          setIsInitializing(false);
-        })
-        .catch((err) => {
+        } catch (err: any) {
           console.warn('[UnifiedApp] Health check status retrieval note:', err);
+        } finally {
           setIsInitializing(false);
-        });
+        }
+      };
+
+      checkHealthWithRetry();
     }
   }, []);
 

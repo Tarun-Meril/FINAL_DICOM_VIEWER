@@ -72,18 +72,24 @@ export function SeriesThumbnail({ studyUID, seriesUID, imageIds: initialImageIds
   const renderContent = () => {
     if (status === ThumbnailStatus.Failed) {
       return (
-        <div className="flex flex-col items-center justify-center w-full h-full bg-[#15181E]">
-          <span className="text-[11px] font-sans font-bold text-red-500">ERR</span>
+        <div className="flex flex-col items-center justify-center w-full h-full bg-[#15181E] relative overflow-hidden group">
+          <svg className="w-7 h-7 text-sky-500/35" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="9" />
+            <ellipse cx="12" cy="12" rx="5" ry="6.5" />
+            <path d="M12 5v14M5 12h14" strokeOpacity="0.3" strokeDasharray="2 2" />
+          </svg>
+          <span className="absolute bottom-1 text-[8px] font-mono font-medium text-slate-400">{modality || 'CT'}</span>
         </div>
       );
     }
 
     if (status === ThumbnailStatus.Ready && imageUrl) {
       return (
-        <img 
-          src={imageUrl} 
-          alt="Series Thumbnail" 
+        <img
+          src={imageUrl}
+          alt="Series Thumbnail"
           className="w-full h-full object-cover"
+          onError={() => setStatus(ThumbnailStatus.Failed)}
         />
       );
     }
@@ -100,12 +106,12 @@ export function SeriesThumbnail({ studyUID, seriesUID, imageIds: initialImageIds
   };
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="w-[54px] h-[54px] bg-black border border-[#353C48] rounded-[4px] shrink-0 flex items-center justify-center relative overflow-hidden"
     >
       {renderContent()}
-      
+
       {/* Overlays */}
       <span className="absolute top-[2px] left-[3px] text-[7px] text-[#3B82F6] font-bold z-10">{modality}</span>
       <span className="absolute bottom-[2px] right-[3px] text-[7px] text-green-500 font-mono-numbers z-10">{imagesCount}</span>

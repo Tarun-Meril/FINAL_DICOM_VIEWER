@@ -297,8 +297,9 @@ app.whenReady().then(async () => {
     }
   });
 
+  const startPromise = serviceManager.startServices();
   createWindow();
-  await serviceManager.startServices();
+  await startPromise;
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
