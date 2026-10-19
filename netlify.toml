@@ -1,5 +1,5 @@
 [build]
-  command = "cd \"dicom ui viewer/frontend\" && npm install && npm run build"
+  command = "cd \"dicom ui viewer/frontend\" && npm install --legacy-peer-deps && npm run build"
   publish = "dicom ui viewer/frontend/dist"
 
 [[redirects]]
