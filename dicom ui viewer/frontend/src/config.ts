@@ -1,8 +1,27 @@
 export const getDynamicApiBaseUrl = (): string => {
   if (typeof window !== 'undefined' && window.location) {
-    const searchParams = new URLSearchParams(window.location.search);
-    const apiHost = searchParams.get('apiHost');
-    if (apiHost) return apiHost.replace(/\/+$/, '');
+    let apiHost = new URLSearchParams(window.location.search).get('apiHost');
+
+    // Also check inside hash if present (e.g. #/viewer/uid?apiHost=...)
+    if (!apiHost && window.location.hash && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      apiHost = new URLSearchParams(hashQuery).get('apiHost');
+    }
+
+    // Persist in localStorage so subsequent navigation (MPR, VR, Series) remembers the host
+    if (apiHost) {
+      const cleanHost = apiHost.replace(/\/+$/, '');
+      try {
+        localStorage.setItem('merilview_api_host', cleanHost);
+      } catch (e) {}
+      return cleanHost;
+    }
+
+    // Check previously saved host from localStorage
+    try {
+      const savedHost = localStorage.getItem('merilview_api_host');
+      if (savedHost) return savedHost;
+    } catch (e) {}
 
     const hostname = window.location.hostname;
     const port = window.location.port;
@@ -24,7 +43,7 @@ export const getDynamicApiBaseUrl = (): string => {
       if (isIpOrLocal) {
         return `${protocol}//${hostname}:3001`;
       }
-      return window.location.origin;
+      return import.meta.env.VITE_API_BASE_URL || window.location.origin;
     }
   }
   return (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '');

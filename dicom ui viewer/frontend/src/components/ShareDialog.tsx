@@ -4,21 +4,7 @@ import { X, Copy, QrCode, ExternalLink, Link, Key, Calendar, ShieldAlert, Globe,
 import { API_BASE_URL } from '../config';
 
 // Port 3001 is where our Node.js Share Study APIs run
-const getDynamicShareApiUrl = () => {
-  const envUrl = import.meta.env.VITE_SHARE_API_BASE_URL;
-  if (typeof window !== 'undefined' && window.location) {
-    const hostname = window.location.hostname;
-    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      const isIpOrLocal = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.endsWith('.local');
-      if (isIpOrLocal) {
-        return `${window.location.protocol}//${hostname}:3001`;
-      }
-      return window.location.origin;
-    }
-  }
-  return envUrl || 'http://localhost:3001';
-};
-const SHARE_API_BASE_URL = getDynamicShareApiUrl();
+const SHARE_API_BASE_URL = API_BASE_URL;
 
 const copyTextFallback = (text: string): boolean => {
   const textArea = document.createElement('textarea');
