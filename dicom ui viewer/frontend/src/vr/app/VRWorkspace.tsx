@@ -70,7 +70,14 @@ export function VRWorkspace({ studyUID, seriesUID, apiBase, onClose, variant = '
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  if (s.status !== 'ready' || !s.load) {
+  const currentLoadedStudyUid = s.load?.series?.studyInstanceUID;
+  const currentLoadedSeriesUid = s.load?.series?.seriesInstanceUID;
+  const isDatasetMismatched = Boolean(
+    (studyUID && currentLoadedStudyUid && studyUID !== currentLoadedStudyUid) ||
+    (seriesUID && currentLoadedSeriesUid && seriesUID !== currentLoadedSeriesUid)
+  );
+
+  if (s.status !== 'ready' || !s.load || isDatasetMismatched) {
     return <LoadScreen studyUID={studyUID} seriesUID={seriesUID} apiBase={apiBase} />;
   }
 

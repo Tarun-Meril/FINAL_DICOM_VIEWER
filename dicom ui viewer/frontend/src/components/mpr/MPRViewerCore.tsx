@@ -3,6 +3,8 @@ import { MPRWorkspace } from '../../mpr/ui/MPRWorkspace';
 import ClinicalServerMPRView from '../../mpr/ui/ClinicalServerMPRView';
 import '../../mpr/mpr.css';
 
+import { API_BASE_URL } from '../../config';
+
 export interface MPRViewerCoreProps {
   /** StudyInstanceUID to reconstruct. Never hardcoded. */
   studyUID?: string;
@@ -23,8 +25,9 @@ export default function MPRViewerCore({
   onClose,
   variant = 'embedded',
 }: MPRViewerCoreProps) {
-  // Keep server mode always as required
-  const [engineMode, setEngineMode] = useState<'server' | 'webgl'>('server');
+  const activeApiBase = apiBase || API_BASE_URL;
+  // Default to native client-side WebGL Cornerstone3D reconstruction engine
+  const [engineMode, setEngineMode] = useState<'server' | 'webgl'>('webgl');
   const [hasWebGLError, setHasWebGLError] = useState(false);
 
   // Monitor for global WebGL context loss to automatically failover to Server MPR
@@ -55,7 +58,7 @@ export default function MPRViewerCore({
         <MPRWorkspace
           studyUID={studyUID}
           seriesUID={seriesUID}
-          apiBase={apiBase}
+          apiBase={activeApiBase}
           onClose={onClose}
           variant={variant}
         />

@@ -104,6 +104,11 @@ export const ClinicalServerMPRView: React.FC<ClinicalServerMPRViewProps> = ({
         const url = `${API_BASE_URL}/api/mpr/info?study_uid=${encodeURIComponent(studyUID)}&series_uid=${encodeURIComponent(activeSeries)}`;
         const res = await fetch(url);
         if (!res.ok) {
+          if (onSwitchToWebGL) {
+            console.warn(`[MPR] Server endpoint unavailable (HTTP ${res.status}) — switching to client-side WebGL engine`);
+            onSwitchToWebGL();
+            return;
+          }
           throw new Error(`Failed to load volume metadata: HTTP ${res.status}`);
         }
         const data: VolumeInfo = await res.json();
@@ -119,6 +124,11 @@ export const ClinicalServerMPRView: React.FC<ClinicalServerMPRViewProps> = ({
         setSagittalSlice(Math.floor((data.dimensions.sagittal || 512) / 2));
       } catch (err: any) {
         if (!cancelled) {
+          if (onSwitchToWebGL) {
+            console.warn('[MPR] Server MPR failed with exception — falling back to WebGL engine:', err);
+            onSwitchToWebGL();
+            return;
+          }
           setError(err.message || 'Error initializing MPR engine');
         }
       } finally {
@@ -331,14 +341,24 @@ export const ClinicalServerMPRView: React.FC<ClinicalServerMPRViewProps> = ({
         <AlertTriangle className="w-10 h-10 text-amber-500" />
         <div className="text-lg font-semibold text-red-400">Backend MPR Error</div>
         <div className="text-sm text-gray-400 max-w-md">{error}</div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="mt-4 px-4 py-2 bg-[#1A1D24] border border-[#2E333D] rounded text-sm hover:bg-[#252A34] text-white"
-          >
-            ← Return to 2D Viewer
-          </button>
-        )}
+        <div className="flex items-center gap-3 mt-4">
+          {onSwitchToWebGL && (
+            <button
+              onClick={onSwitchToWebGL}
+              className="px-4 py-2 bg-[#2E7DFF] hover:bg-[#2563EB] text-white rounded text-sm font-medium transition-colors shadow-lg"
+            >
+              Switch to WebGL MPR
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-[#1A1D24] border border-[#2E333D] rounded text-sm hover:bg-[#252A34] text-white"
+            >
+              ← Return to 2D Viewer
+            </button>
+          )}
+        </div>
       </div>
     );
   }

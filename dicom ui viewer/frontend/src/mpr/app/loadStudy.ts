@@ -29,6 +29,7 @@ import {
   type VolumeDescriptor,
 } from '../core/volume/VolumeBuilder';
 import { clearRegistry, registerFrames, registerStudyInfo } from '../engine/metadataProvider';
+import { API_BASE_URL } from '../../config';
 
 export interface LoadedStudy {
   readonly frames: readonly FrameDescriptor[];
@@ -124,7 +125,7 @@ export interface PacsInstanceItem {
 export async function loadStudyFromPacs(
   studyUid: string,
   seriesUid?: string,
-  apiBase: string = 'http://localhost:8000',
+  apiBase: string = API_BASE_URL,
   onProgress?: (done: number, total: number, message?: string) => void,
 ): Promise<{ study: LoadedStudy; selectedSeriesUid: string }> {
   const base = apiBase.replace(/\/+$/, '');
@@ -192,7 +193,7 @@ export async function loadStudyFromPacs(
       const seriesList = await fetchJsonWithRetry(
         `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
       );
-      const list = Array.isArray(seriesList) ? seriesList : seriesList?.value || [];
+      const list = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
       if (list.length > 0) {
         const found = list.some(
           (x: any) => (x.series_instance_uid || x.seriesInstanceUid) === targetSeriesUid,
@@ -216,7 +217,7 @@ export async function loadStudyFromPacs(
     const seriesList = await fetchJsonWithRetry(
       `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
     );
-    const candidates = Array.isArray(seriesList) ? seriesList : seriesList?.value || [];
+    const candidates = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
 
     const isReconstructable = (x: any): boolean => {
       const mod = String(x.modality || x.Modality || '').toUpperCase();
@@ -283,7 +284,7 @@ export async function loadStudyFromPacs(
   );
   const instances: PacsInstanceItem[] = Array.isArray(instancesData)
     ? instancesData
-    : instancesData?.value || [];
+    : (instancesData?.data || instancesData?.value || []);
 
   if (instances.length === 0) {
     throw new Error(`Series ${targetSeriesUid} contains no instances`);

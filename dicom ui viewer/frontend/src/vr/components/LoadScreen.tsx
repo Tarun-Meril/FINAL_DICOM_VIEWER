@@ -225,14 +225,22 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
 
   // Study identity arrives as PROPS, never from the URL.
   useEffect(() => {
-    if (studyUID && s.status !== 'ready' && s.status !== 'loading') {
-      if (s.status === 'idle' || lastAttemptedStudyRef.current !== `${studyUID}_${seriesUID}`) {
+    const loadedStudy = s.load?.series?.studyInstanceUID;
+    const loadedSeries = s.load?.series?.seriesInstanceUID;
+    const isMismatched = Boolean(
+      (studyUID && loadedStudy && studyUID !== loadedStudy) ||
+      (seriesUID && loadedSeries && seriesUID !== loadedSeries)
+    );
+
+    if (studyUID && s.status !== 'loading') {
+      if (s.status === 'idle' || isMismatched || lastAttemptedStudyRef.current !== `${studyUID}_${seriesUID}`) {
         lastAttemptedStudyRef.current = `${studyUID}_${seriesUID}`;
+        clearSession();
         s.setError(null);
         loadFromPacs(studyUID, seriesUID || undefined, apiBase || DEFAULT_API_BASE);
       }
     }
-  }, [studyUID, seriesUID, apiBase, loadFromPacs, s.status]);
+  }, [studyUID, seriesUID, apiBase, loadFromPacs, s.status, s.load]);
 
   const pct = s.progress && s.progress.total > 0 ? (s.progress.done / s.progress.total) * 100 : 0;
 

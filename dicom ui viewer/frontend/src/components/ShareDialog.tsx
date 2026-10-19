@@ -6,8 +6,15 @@ import { API_BASE_URL } from '../config';
 // Port 3001 is where our Node.js Share Study APIs run
 const getDynamicShareApiUrl = () => {
   const envUrl = import.meta.env.VITE_SHARE_API_BASE_URL;
-  if (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  if (typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname;
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      const isIpOrLocal = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.endsWith('.local');
+      if (isIpOrLocal) {
+        return `${window.location.protocol}//${hostname}:3001`;
+      }
+      return window.location.origin;
+    }
   }
   return envUrl || 'http://localhost:3001';
 };
@@ -69,15 +76,20 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   const [tokenInfo, setTokenInfo] = useState<any>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showQrCode, setShowQrCode] = useState<boolean>(false);
+  const [showEnlargedQr, setShowEnlargedQr] = useState<boolean>(false);
   const [showConfirmRegenerate, setShowConfirmRegenerate] = useState<boolean>(false);
 
   // Host Destination configuration
-  const defaultLanUrl = import.meta.env.VITE_SHARE_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://10.42.0.130:3001');
-  const defaultCloudUrl = 'https://pacs-dicom.vercel.app';
+  const isRemoteDomain = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.42.0.130:3001');
+  const defaultCloudUrl = isRemoteDomain ? detectedOrigin : 'https://pacs-dicom.vercel.app';
   const [hostMode, setHostMode] = useState<'lan' | 'cloud' | 'desktop' | 'custom'>(() => {
+    if (isRemoteDomain) return 'custom';
     return (localStorage.getItem('merilview_share_host_mode') as any) || 'lan';
   });
   const [customHost, setCustomHost] = useState<string>(() => {
+    if (isRemoteDomain) return detectedOrigin;
     return localStorage.getItem('merilview_share_custom_host') || defaultLanUrl;
   });
   const [isEditingCustomHost, setIsEditingCustomHost] = useState<boolean>(false);
@@ -167,8 +179,8 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
       const generatedUrl = buildShareUrl(token, hostMode, customHost);
       setShareLink(generatedUrl);
       
-      // Generate QR Code Offline
-      const qrDataUrl = await QRCode.toDataURL(generatedUrl, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+      // Generate High-Density QR Code with proper quiet zone margin and Level M error correction
+      const qrDataUrl = await QRCode.toDataURL(generatedUrl, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
       setQrCodeDataUrl(qrDataUrl);
 
       showToast('Share Link Created');
@@ -202,7 +214,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
       const url = buildShareUrl(tokenInfo.token, newMode, customHost);
       setShareLink(url);
       try {
-        const qr = await QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+        const qr = await QRCode.toDataURL(url, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
         setQrCodeDataUrl(qr);
       } catch (_) {}
     }
@@ -216,7 +228,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
       const url = buildShareUrl(tokenInfo.token, 'custom', newHost);
       setShareLink(url);
       try {
-        const qr = await QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+        const qr = await QRCode.toDataURL(url, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
         setQrCodeDataUrl(qr);
       } catch (_) {}
     }
@@ -672,16 +684,31 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                 </div>
 
                 {/* QR Code Container */}
-                <div className="flex flex-col items-center justify-center p-3 bg-white border border-[#353C48] rounded-[4px] shrink-0 h-[200px]">
+                <div className="flex flex-col items-center justify-center p-3 bg-white border border-[#353C48] rounded-[4px] shrink-0 sm:w-[210px]">
                   {qrCodeDataUrl ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <img src={qrCodeDataUrl} className="w-[120px] h-[120px] object-contain select-all" alt="Share QR Code" />
-                      <div className="flex gap-1.5 text-[10px] select-none font-semibold text-[#1C1F26]">
-                        <button onClick={handleCopyQRCode} className="hover:text-[#3B82F6] transition-colors cursor-pointer outline-none">Copy</button>
+                    <div className="flex flex-col items-center gap-1.5 w-full">
+                      <div 
+                        onClick={() => setShowEnlargedQr(true)}
+                        className="cursor-pointer group relative p-1 bg-white rounded hover:ring-2 hover:ring-[#3B82F6] transition-all"
+                        title="Click to Enlarge for Phone Camera Scanning"
+                      >
+                        <img 
+                          src={qrCodeDataUrl} 
+                          className="w-[145px] h-[145px] object-contain select-all" 
+                          style={{ imageRendering: 'pixelated' }}
+                          alt="Share QR Code" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center">
+                          <span className="text-white text-[10px] font-bold bg-black/80 px-2 py-0.5 rounded shadow">Click to Enlarge</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-[#475569] font-medium select-none">Scan with phone camera</span>
+                      <div className="flex gap-2 text-[10px] select-none font-semibold text-[#1C1F26] border-t border-gray-200 pt-1 w-full justify-center">
+                        <button onClick={() => setShowEnlargedQr(true)} className="text-[#2563EB] hover:underline cursor-pointer outline-none">Enlarge</button>
                         <span>•</span>
-                        <button onClick={handleSaveQRCode} className="hover:text-[#3B82F6] transition-colors cursor-pointer outline-none">Save</button>
+                        <button onClick={handleCopyQRCode} className="hover:text-[#2563EB] transition-colors cursor-pointer outline-none">Copy</button>
                         <span>•</span>
-                        <button onClick={handlePrintQRCode} className="hover:text-[#3B82F6] transition-colors cursor-pointer outline-none">Print</button>
+                        <button onClick={handleSaveQRCode} className="hover:text-[#2563EB] transition-colors cursor-pointer outline-none">Save</button>
                       </div>
                     </div>
                   ) : (
@@ -741,6 +768,60 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
           </div>
         </div>
       </div>
+
+      {/* High-Resolution Fullscreen Enlarged QR Modal for Instant Camera Scanning */}
+      {showEnlargedQr && qrCodeDataUrl && (
+        <div 
+          className="fixed inset-0 z-[10000] bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setShowEnlargedQr(false)}
+        >
+          <div 
+            className="bg-[#1C1F26] border border-[#353C48] rounded-[8px] p-6 max-w-sm w-full flex flex-col items-center gap-4 shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center w-full border-b border-[#2D333E] pb-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <QrCode className="w-4 h-4 text-[#3B82F6]" />
+                Scan with Mobile Camera
+              </h3>
+              <button 
+                onClick={() => setShowEnlargedQr(false)}
+                className="text-gray-400 hover:text-white p-1 rounded cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-[6px] shadow-md border-4 border-white">
+              <img 
+                src={qrCodeDataUrl} 
+                className="w-[260px] h-[260px] object-contain" 
+                style={{ imageRendering: 'pixelated' }}
+                alt="Enlarged Share QR Code" 
+              />
+            </div>
+
+            <p className="text-[12px] text-gray-300 px-2 leading-relaxed">
+              Point your smartphone camera at this screen to open the DICOM study and medical reports instantly.
+            </p>
+
+            <div className="flex gap-2 w-full pt-1">
+              <button 
+                onClick={handleCopyLink} 
+                className="flex-1 py-1.5 bg-[#252B34] border border-[#353C48] text-white text-[12px] font-medium rounded hover:bg-[#2C333E] flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copy Link
+              </button>
+              <button 
+                onClick={() => setShowEnlargedQr(false)} 
+                className="px-5 py-1.5 bg-[#3B82F6] text-white text-[12px] font-bold rounded hover:bg-[#2563EB] cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

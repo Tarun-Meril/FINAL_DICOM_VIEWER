@@ -633,17 +633,24 @@ export default function Viewport({
       const imageIds = instancesList.map((inst, idx) => {
         const sopUid = inst.sop_instance_uid || inst.sopInstanceUid;
         const imgId = `wadouri:${API_BASE_URL}/api/instances/${sopUid}/file`;
+        const rawIpp = inst.image_position || inst.imagePositionPatient;
+        const rawIop = inst.image_orientation || inst.imageOrientationPatient;
+        const rawPs = inst.pixel_spacing || inst.pixelSpacing;
         const meta: any = {
-          imagePositionPatient: inst.image_position || inst.imagePositionPatient || [0, 0, idx * 1.25],
-          imageOrientationPatient: inst.image_orientation || inst.imageOrientationPatient || [1, 0, 0, 0, 1, 0],
-          sliceThickness: inst.slice_thickness || inst.sliceThickness || 1.25,
+          imagePositionPatient: (Array.isArray(rawIpp) && rawIpp.length >= 3) ? rawIpp : [0, 0, idx * 1.25],
+          imageOrientationPatient: (Array.isArray(rawIop) && rawIop.length >= 6) ? rawIop : [1, 0, 0, 0, 1, 0],
+          sliceThickness: Number(inst.slice_thickness || inst.sliceThickness || 1.25) || 1.25,
         };
         if (inst.bits_allocated !== undefined || inst.bitsAllocated !== undefined) meta.bitsAllocated = inst.bits_allocated ?? inst.bitsAllocated;
         if (inst.bits_stored !== undefined || inst.bitsStored !== undefined) meta.bitsStored = inst.bits_stored ?? inst.bitsStored;
         if (inst.high_bit !== undefined || inst.highBit !== undefined) meta.highBit = inst.high_bit ?? inst.highBit;
         if (inst.pixel_representation !== undefined || inst.pixelRepresentation !== undefined) meta.pixelRepresentation = inst.pixel_representation ?? inst.pixelRepresentation;
         if (inst.samples_per_pixel !== undefined || inst.samplesPerPixel !== undefined) meta.samplesPerPixel = inst.samples_per_pixel ?? inst.samplesPerPixel;
-        if (inst.pixel_spacing || inst.pixelSpacing) meta.pixelSpacing = inst.pixel_spacing || inst.pixelSpacing;
+        if (Array.isArray(rawPs) && rawPs.length >= 2) {
+          meta.pixelSpacing = rawPs;
+        } else {
+          meta.pixelSpacing = [1.0, 1.0];
+        }
         if (inst.rows) meta.rows = inst.rows;
         const modality = inst.modality || inst.Modality || 'CT';
         meta.modality = modality;

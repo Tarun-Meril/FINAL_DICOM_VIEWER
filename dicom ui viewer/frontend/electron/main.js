@@ -143,6 +143,13 @@ function handleDeepLink(url) {
 }
 
 function createWindow() {
+  const iconCandidates = [
+    path.join(__dirname, '../build/icons/512x512.png'),
+    path.join(__dirname, '../build/icon.png'),
+    path.join(__dirname, '../src/logo.png'),
+  ];
+  const appIcon = iconCandidates.find(p => fs.existsSync(p));
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 850,
@@ -151,6 +158,7 @@ function createWindow() {
     frame: false, // frameless window
     backgroundColor: '#0B0D10',
     title: 'MerilView',
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -207,13 +215,13 @@ function createWindow() {
   } else if (!app.isPackaged) {
     // In unpackaged development testing, try Vite dev server first, fall back to app://
     mainWindow.loadURL(viewerDevUrl).catch(() => {
-      mainWindow.loadURL('app://localhost/index.html').catch(() => {
+      mainWindow.loadURL('app://localhost/index.html?apiHost=http://127.0.0.1:3001').catch(() => {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
       });
     });
   } else {
     // In production, load the built app via privileged protocol scheme so Web Workers, WASM and CORS work natively
-    mainWindow.loadURL('app://localhost/index.html');
+    mainWindow.loadURL('app://localhost/index.html?apiHost=http://127.0.0.1:3001');
   }
 
   // Monitor maximize / unmaximize events and notify renderer
@@ -310,6 +318,17 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   serviceManager.shutdown();
+});
+
+// Graceful terminal signal termination for Ubuntu / Linux
+process.on('SIGTERM', () => {
+  console.log('[MerilView] Received SIGTERM signal. Quitting application...');
+  app.quit();
+});
+
+process.on('SIGINT', () => {
+  console.log('[MerilView] Received SIGINT signal. Quitting application...');
+  app.quit();
 });
 
 app.on('window-all-closed', () => {

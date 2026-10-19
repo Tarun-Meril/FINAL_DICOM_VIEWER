@@ -13,6 +13,15 @@ const safeRenameSync = (oldPath: string, newPath: string, retries = 10, delay = 
       fs.renameSync(oldPath, newPath);
       return;
     } catch (err: any) {
+      if (err.code === 'EXDEV') {
+        try {
+          fs.copyFileSync(oldPath, newPath);
+          safeUnlinkSync(oldPath);
+          return;
+        } catch (copyErr: any) {
+          throw copyErr;
+        }
+      }
       if ((err.code === 'EBUSY' || err.code === 'EACCES') && i < retries - 1) {
         const start = Date.now();
         while (Date.now() - start < delay) {}
@@ -313,7 +322,11 @@ export class StudyController {
 
           importedInstances.push({
             sopInstanceUid: metadata.sopInstanceUid,
+            seriesInstanceUid: metadata.seriesInstanceUid,
+            studyInstanceUid: metadata.studyInstanceUid,
+            study_uid: metadata.studyInstanceUid,
             patientName: metadata.patientName,
+            patient_name: metadata.patientName,
             studyDescription: metadata.studyDescription
           });
 
@@ -328,7 +341,10 @@ export class StudyController {
 
       res.json({
         success: true,
+        status: 'success',
         importedCount: importedInstances.length,
+        results: importedInstances,
+        data: importedInstances,
         report: {
           totalDiscovered,
           validDicomCount,
@@ -339,7 +355,6 @@ export class StudyController {
           seriesCount: db.getSeries().length,
           instanceCount: db.getInstances().length
         },
-        data: importedInstances,
         errors: errorLog.length > 0 ? errorLog : undefined,
         duplicates: duplicateLog.length > 0 ? duplicateLog : undefined
       });
@@ -354,7 +369,29 @@ export class StudyController {
       const { sopInstanceUid } = req.params;
       const instance = db.getInstanceByUid(sopInstanceUid);
       
-      if (!instance || !fs.existsSync(instance.filePath)) {
+      let filePath = instance?.filePath;
+      if (!filePath || !fs.existsSync(filePath)) {
+        const storageDir = ENV.STORAGE_DIR;
+        const candidates = [
+          instance?.studyInstanceUid && instance?.seriesInstanceUid
+            ? path.join(storageDir, instance.studyInstanceUid, instance.seriesInstanceUid, `${sopInstanceUid}.dcm`)
+            : null,
+          path.join(storageDir, `${sopInstanceUid}.dcm`),
+          filePath ? path.join(storageDir, path.basename(filePath)) : null,
+        ].filter(Boolean) as string[];
+
+        for (const cand of candidates) {
+          if (fs.existsSync(cand)) {
+            filePath = cand;
+            if (instance) {
+              instance.filePath = cand;
+            }
+            break;
+          }
+        }
+      }
+
+      if (!filePath || !fs.existsSync(filePath)) {
         res.status(404).json({ success: false, message: 'Instance file not found.' });
         return;
       }
@@ -364,7 +401,7 @@ export class StudyController {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
       
-      const fileStream = fs.createReadStream(instance.filePath);
+      const fileStream = fs.createReadStream(filePath);
       fileStream.pipe(res);
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });

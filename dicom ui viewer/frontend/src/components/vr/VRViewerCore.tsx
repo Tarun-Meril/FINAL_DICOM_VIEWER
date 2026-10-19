@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { VRWorkspace } from '../../vr/app/VRWorkspace';
 import '../../vr/app/theme.css';
 import { useAppStore } from '../../vr/state/store';
+import { clearSession } from '../../vr/state/session';
 
 /**
  * The integrated 3D Volume Rendering workstation.
@@ -30,12 +31,23 @@ export default function VRViewerCore({
   onClose,
   variant = 'embedded',
 }: VRViewerCoreProps) {
+  const lastKeyRef = useRef<string>('');
+
   useEffect(() => {
+    const currentKey = `${studyUID || ''}_${seriesUID || ''}`;
     const s = useAppStore.getState();
-    if (s.status === 'error') {
-      s.setError(null);
-      s.setStatus('idle');
+    const loadedStudy = s.load?.series?.studyInstanceUID;
+    const loadedSeries = s.load?.series?.seriesInstanceUID;
+    const isMismatched = Boolean(
+      (studyUID && loadedStudy && studyUID !== loadedStudy) ||
+      (seriesUID && loadedSeries && seriesUID !== loadedSeries)
+    );
+
+    if (s.status === 'error' || isMismatched || (lastKeyRef.current && lastKeyRef.current !== currentKey)) {
+      clearSession();
+      s.reset();
     }
+    lastKeyRef.current = currentKey;
   }, [studyUID, seriesUID]);
   return (
     <div className="medview-vr" style={{ width: '100%', height: '100%' }}>

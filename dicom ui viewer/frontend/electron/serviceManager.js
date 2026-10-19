@@ -110,55 +110,52 @@ export class ServiceManager {
         }
       });
 
-      // Seed initial db.json if not present
+      // Initialize clean db.json if not present
       if (!fs.existsSync(this.paths.dbFile)) {
-        const candidates = [
-          process.resourcesPath ? path.join(process.resourcesPath, 'pacs-backend', 'data', 'db.json') : null,
-          path.resolve(this.baseDir, '../../../pacs-study-browser/backend/data/db.json'),
-          path.resolve(this.baseDir, '../../pacs-study-browser/backend/data/db.json'),
-          path.resolve(this.baseDir, '../pacs-study-browser/backend/data/db.json'),
-          path.resolve(__dirname, '../../../pacs-study-browser/backend/data/db.json')
-        ].filter(Boolean);
-
-        let seedContent = null;
-        for (const cand of candidates) {
-          if (fs.existsSync(cand)) {
-            seedContent = fs.readFileSync(cand, 'utf8');
-            console.log(`[ServiceManager] Seeded db.json from ${cand}`);
-            break;
-          }
-        }
-
-        if (seedContent) {
-          fs.writeFileSync(this.paths.dbFile, seedContent, 'utf8');
-        } else {
-          // Fallback minimal structure
-          fs.writeFileSync(this.paths.dbFile, JSON.stringify({ studies: [], series: [], instances: [] }, null, 2), 'utf8');
-        }
+        fs.writeFileSync(this.paths.dbFile, JSON.stringify({
+          studies: [],
+          series: [],
+          instances: [],
+          share_links: [],
+          share_audit_logs: []
+        }, null, 2), 'utf8');
+        console.log('[ServiceManager] Initialized clean persistent database structure.');
       }
 
-      // Seed initial sample DICOM instances if dicom folder is empty
-      if (fs.existsSync(this.paths.dicom)) {
-        let existingFiles = [];
+      // Auto-heal db.json paths so they point to the active clinical dicom directory on this system
+      if (fs.existsSync(this.paths.dbFile)) {
         try {
-          existingFiles = fs.readdirSync(this.paths.dicom);
-        } catch (_) { }
-
-        if (existingFiles.length === 0) {
-          const sampleSourceDirs = [
-            process.resourcesPath ? path.join(process.resourcesPath, 'pacs-backend', 'data', 'instances') : null,
-            path.resolve(this.baseDir, '../../../pacs-study-browser/backend/data/instances'),
-            path.resolve(this.baseDir, '../../pacs-study-browser/backend/data/instances'),
-            path.resolve(this.baseDir, '../pacs-study-browser/backend/data/instances'),
-          ].filter(Boolean);
-
-          for (const srcDir of sampleSourceDirs) {
-            if (fs.existsSync(srcDir) && fs.readdirSync(srcDir).length > 0) {
-              console.log(`[ServiceManager] Seeding initial sample DICOM instances from ${srcDir}...`);
-              copyDirRecursiveSync(srcDir, this.paths.dicom);
-              break;
+          const raw = fs.readFileSync(this.paths.dbFile, 'utf8');
+          const data = JSON.parse(raw);
+          let modified = false;
+          if (Array.isArray(data.instances)) {
+            for (const inst of data.instances) {
+              if (inst && inst.sopInstanceUid) {
+                if (!inst.filePath || !fs.existsSync(inst.filePath)) {
+                  if (inst.studyInstanceUid && inst.seriesInstanceUid) {
+                    const cand = path.join(this.paths.dicom, inst.studyInstanceUid, inst.seriesInstanceUid, `${inst.sopInstanceUid}.dcm`);
+                    if (fs.existsSync(cand)) {
+                      inst.filePath = cand;
+                      modified = true;
+                    }
+                  }
+                  if (!inst.filePath || !fs.existsSync(inst.filePath)) {
+                    const cand2 = path.join(this.paths.dicom, `${inst.sopInstanceUid}.dcm`);
+                    if (fs.existsSync(cand2)) {
+                      inst.filePath = cand2;
+                      modified = true;
+                    }
+                  }
+                }
+              }
             }
           }
+          if (modified) {
+            fs.writeFileSync(this.paths.dbFile, JSON.stringify(data, null, 2), 'utf8');
+            console.log('[ServiceManager] Healed and rebased DICOM instance paths in db.json to active storage');
+          }
+        } catch (e) {
+          console.error('[ServiceManager] Failed to heal db.json paths:', e);
         }
       }
     } catch (err) {
@@ -208,23 +205,48 @@ export class ServiceManager {
   }
 
   async freePortIfDead(port) {
-    if (process.platform !== 'win32') return;
-    try {
-      const netstatOutput = execSync(`netstat -ano -p tcp | findstr :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      const lines = netstatOutput.split('\r\n').map(l => l.trim()).filter(l => l.includes('LISTENING'));
-      for (const line of lines) {
-        const parts = line.split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && pid !== '0' && Number(pid) !== process.pid) {
-          console.log(`[ServiceManager] Terminating unresponsive zombie process ${pid} occupying port ${port}...`);
-          try {
-            execSync(`taskkill /pid ${pid} /f /t`, { stdio: 'ignore' });
-            await new Promise(r => setTimeout(r, 400));
-          } catch (_) { }
+    if (process.platform === 'win32') {
+      try {
+        const netstatOutput = execSync(`netstat -ano -p tcp | findstr :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const lines = netstatOutput.split('\r\n').map(l => l.trim()).filter(l => l.includes('LISTENING'));
+        for (const line of lines) {
+          const parts = line.split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0' && Number(pid) !== process.pid) {
+            console.log(`[ServiceManager] Terminating unresponsive zombie process ${pid} occupying port ${port}...`);
+            try {
+              execSync(`taskkill /pid ${pid} /f /t`, { stdio: 'ignore' });
+              await new Promise(r => setTimeout(r, 400));
+            } catch (_) { }
+          }
         }
+      } catch (_) {
+        // Port is free or findstr returned no match
       }
-    } catch (_) {
-      // Port is free or findstr returned no match
+    } else {
+      // Linux / Ubuntu port freeing: try fuser or lsof
+      try {
+        try {
+          execSync(`fuser -k ${port}/tcp`, { stdio: 'ignore' });
+          await new Promise(r => setTimeout(r, 400));
+        } catch (_) {
+          const pids = execSync(`lsof -ti :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          if (pids) {
+            for (const pid of pids.split('\n')) {
+              const cleanPid = pid.trim();
+              if (cleanPid && Number(cleanPid) !== process.pid) {
+                console.log(`[ServiceManager] Terminating process ${cleanPid} occupying port ${port}...`);
+                try {
+                  execSync(`kill -9 ${cleanPid}`, { stdio: 'ignore' });
+                } catch (_) {}
+              }
+            }
+            await new Promise(r => setTimeout(r, 400));
+          }
+        }
+      } catch (_) {
+        // Port is free or command not found
+      }
     }
   }
 
@@ -308,6 +330,12 @@ export class ServiceManager {
 
       console.log(`[ServiceManager] Launching PACS Backend: script=${scriptPath}, cwd=${backendDir}`);
 
+      const nodePaths = [
+        path.join(backendDir, 'node_modules'),
+        path.resolve(this.baseDir, '../../../pacs-study-browser/backend/node_modules'),
+        path.resolve(this.baseDir, '../../pacs-study-browser/backend/node_modules'),
+      ].filter(p => fs.existsSync(p));
+
       const env = {
         ...process.env,
         PORT: '3001',
@@ -317,21 +345,77 @@ export class ServiceManager {
         LOG_DIR: this.paths.logs,
         TEMP_DIR: this.paths.temp,
         BACKUP_DIR: this.paths.backups,
-        NODE_PATH: path.join(backendDir, 'node_modules'),
+        NODE_PATH: nodePaths.join(path.delimiter),
       };
 
       const logStream = fs.createWriteStream(this.paths.pacsLog, { flags: 'a' });
 
+      // Determine binary to run node scripts: find explicit node binary or fallback safely
+      let execCmd = 'node';
+      let runAsNodeEnv = {};
+      let useShell = process.platform === 'win32';
+
+      if (process.platform === 'win32') {
+        const winCandidates = [
+          path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+          path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'nodejs', 'node.exe'),
+          path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs', 'node.exe'),
+          path.join(process.env.APPDATA || '', 'npm', 'node.cmd')
+        ];
+        const found = winCandidates.find(p => {
+          try { return fs.existsSync(p); } catch { return false; }
+        });
+        if (found) {
+          execCmd = found;
+          useShell = false;
+        } else {
+          try {
+            const out = execSync('where.exe node', { stdio: 'pipe' }).toString().trim().split(/\r?\n/)[0];
+            if (out && fs.existsSync(out)) {
+              execCmd = out;
+              useShell = false;
+            }
+          } catch (_) {
+            useShell = true;
+          }
+        }
+      } else {
+        const unixCandidates = ['/usr/bin/node', '/usr/local/bin/node', '/bin/node', '/snap/bin/node'];
+        const found = unixCandidates.find(p => {
+          try { return fs.existsSync(p); } catch { return false; }
+        });
+        if (found) {
+          execCmd = found;
+          useShell = false;
+        } else {
+          try {
+            const out = execSync('which node', { stdio: 'pipe' }).toString().trim();
+            if (out && fs.existsSync(out)) {
+              execCmd = out;
+              useShell = false;
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (execCmd === 'node') {
+        try {
+          execSync('node -v', { stdio: 'ignore' });
+        } catch (_) {
+          execCmd = process.execPath;
+          runAsNodeEnv = { ELECTRON_RUN_AS_NODE: '1' };
+          useShell = false;
+        }
+      }
+
       if (scriptPath && scriptPath.endsWith('.js')) {
         let scriptArg = scriptPath;
-        if (backendDir && scriptPath.startsWith(backendDir)) {
-          scriptArg = path.relative(backendDir, scriptPath) || scriptPath;
-        }
-        console.log(`[ServiceManager] Launching PACS Backend process: exec=${process.execPath}, scriptArg=${scriptArg}, cwd=${backendDir}`);
-        this.pacsProcess = spawn(process.execPath, [scriptArg], {
+        console.log(`[ServiceManager] Launching PACS Backend process: exec=${execCmd}, scriptArg=${scriptArg}, cwd=${backendDir}`);
+        this.pacsProcess = spawn(execCmd, [scriptArg], {
           cwd: backendDir,
-          env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+          env: { ...env, ...runAsNodeEnv },
           stdio: ['ignore', 'pipe', 'pipe'],
+          shell: useShell,
           windowsHide: true
         });
       } else {
@@ -345,6 +429,30 @@ export class ServiceManager {
       }
 
       if (this.pacsProcess) {
+        this.pacsProcess.on('error', (err) => {
+          console.error('[ServiceManager] PACS Backend process spawn error:', err);
+          if (execCmd !== process.execPath) {
+            console.log('[ServiceManager] Retrying PACS Backend with embedded Electron Node runtime...');
+            try {
+              this.pacsProcess = spawn(process.execPath, [scriptPath], {
+                cwd: backendDir,
+                env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+                stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true
+              });
+              this.pacsProcess.on('error', (retryErr) => {
+                console.error('[ServiceManager] Fallback PACS Backend also encountered error:', retryErr);
+              });
+              if (this.pacsProcess) {
+                this.pacsProcess.stdout?.pipe(logStream);
+                this.pacsProcess.stderr?.pipe(logStream);
+              }
+            } catch (retryCatch) {
+              console.error('[ServiceManager] Immediate retry error:', retryCatch);
+            }
+          }
+        });
+
         this.pacsProcess.stdout.pipe(logStream);
         this.pacsProcess.stderr.pipe(logStream);
 
@@ -367,7 +475,6 @@ export class ServiceManager {
         path.resolve(this.baseDir, '../../backend'),
         path.resolve(this.baseDir, '../../../dicom ui viewer/backend'),
         path.resolve(this.baseDir, '../../../../dicom ui viewer/backend'),
-        'G:\\newww\\Meril_Dicom_Viewer\\dicom ui viewer\\backend',
       ].filter(Boolean);
       const backendDir = candidates.find(p => fs.existsSync(p));
       if (!backendDir) {
@@ -403,11 +510,14 @@ export class ServiceManager {
       };
 
       const pythonCandidates = [
+        process.env.PYTHON_PATH,
+        path.join(backendDir, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python3'),
+        path.join(backendDir, 'venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python3'),
         process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe') : null,
-        process.platform === 'win32' ? 'C:\\Users\\Tarun\\AppData\\Local\\Programs\\Python\\Python313\\python.exe' : null,
-        process.platform === 'win32' ? 'python.exe' : 'python3',
-        'python',
+        process.platform === 'win32' ? 'python.exe' : '/usr/bin/python3',
+        '/usr/local/bin/python3',
         'python3',
+        'python',
         'py'
       ].filter(Boolean);
 
@@ -425,6 +535,10 @@ export class ServiceManager {
       });
 
       if (this.backendProcess) {
+        this.backendProcess.on('error', (err) => {
+          console.warn('[ServiceManager] Viewer Backend process error:', err.message);
+        });
+
         this.backendProcess.stdout.pipe(logStream);
         this.backendProcess.stderr.pipe(logStream);
 
@@ -496,6 +610,9 @@ export class ServiceManager {
         if (process.platform === 'win32') {
           spawn('taskkill', ['/pid', String(this.pacsProcess.pid), '/f', '/t']);
         } else {
+          try {
+            execSync(`pkill -P ${this.pacsProcess.pid}`, { stdio: 'ignore' });
+          } catch (_) {}
           this.pacsProcess.kill('SIGTERM');
         }
       } catch (err) {
@@ -509,6 +626,9 @@ export class ServiceManager {
         if (process.platform === 'win32') {
           spawn('taskkill', ['/pid', String(this.backendProcess.pid), '/f', '/t']);
         } else {
+          try {
+            execSync(`pkill -P ${this.backendProcess.pid}`, { stdio: 'ignore' });
+          } catch (_) {}
           this.backendProcess.kill('SIGTERM');
         }
       } catch (err) {

@@ -49,8 +49,18 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader('X-Frame-Options', 'DENY');
   // Enable browser XSS filtering
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  // Content Security Policy
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' *;");
+  // Content Security Policy - tailored for Cornerstone3D, WebAssembly DICOM decoders, Web Workers & Google Fonts
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self' blob: data:; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; " +
+    "worker-src 'self' blob:; " +
+    "child-src 'self' blob:; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com data:; " +
+    "img-src 'self' data: blob: https: http:; " +
+    "connect-src 'self' * blob: data: ws: wss:;"
+  );
   
   next();
 }

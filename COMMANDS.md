@@ -24,18 +24,33 @@ This document provides a comprehensive operational guide, package scripts, build
 
 ## 1. Unified Desktop Application & Orchestration Commands
 
-### A. Desktop Workstation Build & Packaging (Single `.exe` Installer)
+### A. Desktop Workstation Build & Packaging (Windows & Ubuntu Linux)
 
 Run from the repository root:
 
 ```powershell
-# Build production bundle and package single Windows installer: "MerilView Setup.exe"
-npm run build:desktop
+# Build Windows single installer: "MerilView Setup.exe"
+npm run build:desktop:win
+
+# Build Ubuntu Linux Debian package (.deb) and AppImage
+npm run build:desktop:linux
+
+# Build Ubuntu Debian package (.deb) only: "merilview_1.0.1_amd64.deb"
+npm run build:desktop:linux:deb
+
+# Build Ubuntu AppImage only: "MerilView-1.0.1-x86_64.AppImage"
+npm run build:desktop:linux:appimage
+
+# Build standalone unpacked Linux distribution: "release/linux-unpacked/merilview"
+npm run build:desktop:linux:dir
 ```
 
-* **Installer Output**: `dicom ui viewer/frontend/release/MerilView Setup.exe`
-* **Portable / Unpacked Output**: `dicom ui viewer/frontend/release/win-unpacked/MerilView.exe`
-* **Persistent Clinical Storage**: `%ProgramData%\MerilView` (retained across app updates and uninstalls)
+* **Windows Installer Output**: `dicom ui viewer/frontend/release/MerilView Setup.exe`
+* **Linux Debian Package Output**: `dicom ui viewer/frontend/release/merilview_1.0.1_amd64.deb`
+* **Linux AppImage Output**: `dicom ui viewer/frontend/release/MerilView-1.0.1-x86_64.AppImage`
+* **Linux Portable / Unpacked Output**: `dicom ui viewer/frontend/release/linux-unpacked/merilview`
+* **Windows Persistent Clinical Storage**: `%ProgramData%\MerilView` (retained across app updates and uninstalls)
+* **Linux Persistent Clinical Storage**: `~/.local/share/MerilView` (XDG standard, retained across app updates and uninstalls)
   * `database/db.json` (DICOM study catalog)
   * `dicom/` (persistent DICOM storage & imported instances)
   * `logs/` (`pacs_backend.log`, `viewer_backend.log`)

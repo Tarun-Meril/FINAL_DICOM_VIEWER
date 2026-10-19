@@ -2,6 +2,11 @@
   "name": "merilview",
   "version": "1.0.1",
   "description": "MerilView DICOM Viewer - Desktop Application Shell",
+  "author": {
+    "name": "Meril Life Sciences",
+    "email": "support@merillife.com"
+  },
+  "homepage": "https://www.merillife.com",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -14,7 +19,10 @@
     "build:desktop": "cross-env ELECTRON_BUILD=true npm run build && electron-builder",
     "build:desktop:win": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --win",
     "build:desktop:mac": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --mac",
-    "build:desktop:linux": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux"
+    "build:desktop:linux": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux",
+    "build:desktop:linux:deb": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux deb",
+    "build:desktop:linux:appimage": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux AppImage",
+    "build:desktop:linux:dir": "cross-env ELECTRON_BUILD=true npm run build && electron-builder --linux --dir"
   },
   "dependencies": {
     "@cornerstonejs/codec-charls": "1.2.3",
@@ -62,6 +70,9 @@
   "build": {
     "appId": "com.meril.merilview",
     "productName": "MerilView",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "asar": true,
     "directories": {
       "output": "release"
     },
@@ -138,16 +149,34 @@
         "AppImage",
         "deb"
       ],
-      "artifactName": "MerilView.${ext}",
+      "icon": "build/icons",
       "category": "MedicalSoftware",
       "synopsis": "MerilView Medical Imaging PACS and Advanced 2D/3D DICOM Workstation",
       "description": "Unified medical diagnostic workstation featuring PACS study archive browsing, Cornerstone3D multiplanar reconstruction (MPR), curved planar reconstruction (CPR), and VTK.js volumetric rendering.",
       "desktop": {
-        "StartupWMClass": "MerilView",
+        "StartupWMClass": "merilview",
         "Terminal": "false",
         "Categories": "Graphics;MedicalSoftware;Science;",
         "MimeType": "x-scheme-handler/merilview;x-scheme-handler/medview;application/dicom;"
       }
+    },
+    "appImage": {
+      "artifactName": "MerilView-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "artifactName": "merilview_${version}_${arch}.${ext}",
+      "packageName": "merilview",
+      "maintainer": "Meril Life Sciences <support@merillife.com>",
+      "depends": [
+        "gconf2",
+        "gconf-service",
+        "libnotify4",
+        "libappindicator1",
+        "libxtst6",
+        "libnss3",
+        "libasound2 | libasound2t64",
+        "libxss1"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -157,8 +186,5 @@
       "shortcutName": "MerilView",
       "include": "electron/installer.nsh"
     }
-  },
-  "optionalDependencies": {
-    "@rolldown/binding-linux-x64-musl": "^1.1.4"
   }
 }

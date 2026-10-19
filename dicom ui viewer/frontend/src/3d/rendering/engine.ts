@@ -546,19 +546,32 @@ export class VolumeRenderEngine {
     const previous = this.stats.quality;
     this.applyQuality('export');
     try {
-      // vtk.js re-sizes the offscreen buffer for `scale`, so the export is a true
-      // high-resolution render rather than an upscaled screen grab (§30).
-      const promise = this.renderWindow.captureImages(opts.format ?? 'image/png', {
-        scale: opts.scale ?? 1,
-      })[0] as Promise<string> | undefined;
-      if (!promise) {
-        throw new MedViewError({
-          code: ErrorCode.RENDER_FAILED,
-          message: 'The rendered frame could not be captured from the graphics device.',
-        });
-      }
       this.renderWindow.render();
-      return await promise;
+      try {
+        const captures = this.renderWindow.captureImages?.(opts.format ?? 'image/png', {
+          scale: opts.scale ?? 1,
+        });
+        const promise = Array.isArray(captures) ? (captures[0] as Promise<string> | undefined) : undefined;
+        if (promise) {
+          const res = await promise;
+          if (res && res.length > 50) return res;
+        }
+      } catch (err) {
+        log.warn('VTK captureImages failed, falling back to direct canvas capture:', err);
+      }
+
+      // Direct fallback to WebGL canvas buffer capture
+      const container = this.grw.getContainer() as HTMLElement | null;
+      const canvas = container?.querySelector('canvas');
+      if (canvas) {
+        const dataUrl = canvas.toDataURL(opts.format ?? 'image/png', opts.quality ?? 0.95);
+        if (dataUrl && dataUrl.length > 50) return dataUrl;
+      }
+
+      throw new MedViewError({
+        code: ErrorCode.RENDER_FAILED,
+        message: 'The rendered frame could not be captured from the graphics device.',
+      });
     } finally {
       this.applyQuality(previous);
     }

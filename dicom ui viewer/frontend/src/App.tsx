@@ -12,6 +12,8 @@ import PasswordPrompt from './components/PasswordPrompt';
 import ErrorFindingModal from './components/ErrorFindingModal';
 import { API_BASE_URL } from './config';
 import { getCatalogStudy, getCatalogSeries } from './sampleStudyCatalog';
+import { clearSession } from './vr/state/session';
+import { useAppStore } from './vr/state/store';
 
 const getDynamicShareApiUrl = () => {
   const envUrl = import.meta.env.VITE_SHARE_API_BASE_URL;
@@ -26,6 +28,7 @@ const getDynamicShareApiUrl = () => {
       if (isIpOrLocal) {
         return `${window.location.protocol}//${hostname}:3001`;
       }
+      return window.location.origin;
     }
   }
   return envUrl || 'http://localhost:3001';
@@ -148,50 +151,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
           validatedData = await res.json();
         }
       } catch (e) {
-        console.warn('[MerilView] API share validate failed, falling back to Supabase directly:', e);
-      }
-
-      // 2. Direct Supabase Fallback (if backend returns non-200 or is unreachable on mobile/cloud)
-      if (!validatedData) {
-        try {
-          const supabaseUrl = 'https://gjtvxsuorghxqqazlszj.supabase.co';
-          const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdHZ4c3VvcmdoeHFxYXpsc3pqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTE3MjYzMiwiZXhwIjoyMTA2NzQ4NjMyfQ.Ly6sHtBM4WhnglXkdKFeXKe6gLzNFC3b0JCpVyurk2k';
-          const sbRes = await fetch(`${supabaseUrl}/rest/v1/share_links?token=eq.${encodeURIComponent(token)}&select=*`, {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            }
-          });
-          if (sbRes.ok) {
-            const rows = await sbRes.json();
-            if (Array.isArray(rows) && rows.length > 0) {
-              const row = rows[0];
-              if (row.revoked) {
-                showToast('This share link has been revoked', 'error');
-                alert('Access Denied: This share link has been revoked.');
-                return;
-              }
-              if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
-                showToast('This share link has expired', 'error');
-                alert('Access Denied: This share link has expired.');
-                return;
-              }
-              if (row.password_hash) {
-                if (!password) {
-                  setPasswordPromptToken(token);
-                  setShowPasswordPrompt(true);
-                  return;
-                }
-              }
-              validatedData = {
-                study_uid: row.study_uid,
-                permissions: row.permissions || { view: true, measure: true, annotation: true, download: false }
-              };
-            }
-          }
-        } catch (sbErr) {
-          console.error('[MerilView] Direct Supabase query failed:', sbErr);
-        }
+        console.warn('[MerilView] API share validate failed:', e);
       }
 
       // 3. Resilient Demo Fallback: if token is not found anywhere, load default clinical study
@@ -309,6 +269,12 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
     }
     currentStudyUidRef.current = studyUid;
 
+    // Reset any active VR session so dataset switch immediately loads the new volume
+    try {
+      clearSession();
+      useAppStore.getState().reset();
+    } catch (_) {}
+
     // Clean URL so old ?studyUID query params or stale paths don't persist
     try {
       if (window.location.search || !window.location.hash.includes(studyUid)) {
@@ -339,20 +305,36 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
 
     // Helper to query API with automatic fallback between FastAPI (8000) and PACS Archive Service (3001)
     const fetchWithFallback = async (path: string) => {
-      // 1. Try FastAPI (port 8000) first
+      const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+      // 1. On remote/tunnel sessions, port 8000 is not exposed - directly use the remote tunnel API base
+      if (isRemote) {
+        try {
+          const baseUrl = API_BASE_URL || SHARE_API_BASE_URL || window.location.origin;
+          const res = await fetch(`${baseUrl}${path}`);
+          if (res.ok) {
+            return await res.json();
+          }
+        } catch (err) {
+          console.warn(`[MerilView] Remote API ${path} error:`, err);
+        }
+        return null;
+      }
+
+      // 2. On local desktop/Electron, try FastAPI (port 8000) first
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        const timeout = setTimeout(() => controller.abort(), 2000);
         const res = await fetch(`${API_BASE_URL}${path}`, { signal: controller.signal });
         clearTimeout(timeout);
         if (res.ok) {
           return await res.json();
         }
       } catch (err) {
-        console.warn(`[MerilView] FastAPI ${path} failed or timed out, trying direct PACS fallback:`, err);
+        // FastAPI unavailable or timed out, silently fall back to PACS
       }
 
-      // 2. Direct fallback to PACS Archive Service (port 3001)
+      // 3. Fallback to PACS Archive Service (port 3001)
       try {
         const pacsBase = import.meta.env.VITE_PACS_API_BASE_URL || SHARE_API_BASE_URL || 'http://127.0.0.1:3001';
         const res = await fetch(`${pacsBase}${path}`);
@@ -447,15 +429,16 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
         body: formData
       });
       const json = await res.json();
-      if (json.status === 'success') {
-        const studyUid = json.results?.[0]?.study_uid;
+      if (json.status === 'success' || json.success) {
+        const studyUid = json.results?.[0]?.study_uid || json.results?.[0]?.studyInstanceUid || json.data?.[0]?.studyInstanceUid || json.data?.[0]?.study_uid;
         if (studyUid) {
           loadStudyAndSeries(studyUid);
         } else {
-          alert('Upload successful but no study UID found.');
+          fetchStudies();
+          alert('Upload successful.');
         }
       } else {
-        alert('Upload failed.');
+        alert('Upload failed: ' + (json.message || 'Error processing DICOM files'));
       }
     } catch (err) {
       console.error(err);
@@ -475,15 +458,16 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
         body: formData
       });
       const json = await res.json();
-      if (json.status === 'success') {
-        const studyUid = json.results?.[0]?.study_uid;
+      if (json.status === 'success' || json.success) {
+        const studyUid = json.results?.[0]?.study_uid || json.results?.[0]?.studyInstanceUid || json.data?.[0]?.studyInstanceUid || json.data?.[0]?.study_uid;
         if (studyUid) {
           loadStudyAndSeries(studyUid);
         } else {
-          alert('Upload successful but no study UID found.');
+          fetchStudies();
+          alert('Upload successful.');
         }
       } else {
-        alert('Upload failed.');
+        alert('Upload failed: ' + (json.message || 'Error processing DICOM files'));
       }
     } catch (err) {
       console.error(err);
@@ -556,6 +540,11 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
     currentStudyUidRef.current = null;
     setSharePermissions(null); // Reset link permissions
     setActiveShareToken(null);
+    setVizMode('2d');
+    try {
+      clearSession();
+      useAppStore.getState().reset();
+    } catch (_) {}
     try {
       window.history.replaceState({}, '', '/#/pacs');
     } catch (_) {}
@@ -639,6 +628,12 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
     const clientType = isElectron ? 'electron' : 'web';
 
     const connectWebSocket = () => {
+      // Remote sessions (ngrok, tunnels, web shares) do not have a local FastAPI sync server
+      const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      if (isRemote) {
+        return;
+      }
+
       const activeParam = initialStudyUid || currentStudyUidRef.current;
       const queryParam = activeParam ? `&studyUID=${encodeURIComponent(activeParam)}` : '';
       console.log(`[MerilView] Connecting WebSocket sync as: ${clientType}`);
@@ -914,6 +909,17 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
     const activeSeriesObj = seriesObj || pacsSeriesList?.find(s => (s.seriesInstanceUid || s.series_instance_uid) === seriesId);
     const maxSlices = activeSeriesObj ? (activeSeriesObj.numberOfSeriesRelatedInstances || activeSeriesObj.number_of_series_related_instances || 1) : 175;
     const seriesNum = activeSeriesObj ? (activeSeriesObj.seriesNumber ?? activeSeriesObj.series_number ?? 1) : 1;
+    
+    // Immediately update activeStats so LeftSidebar highlights it and 3D VR / MPR viewports switch dataset
+    setActiveStats((prev: any) => ({
+      ...(prev || {}),
+      seriesInstanceUid: seriesId,
+      seriesDescription: seriesLabel,
+      seriesNum: seriesNum,
+      totalImages: maxSlices,
+      currentSlice: 1
+    }));
+
     setViewportCommand({
       type: `loadSeries:${seriesLabel}:${maxSlices}:${seriesId}:${seriesNum}`,
       viewportId: activeViewportId,

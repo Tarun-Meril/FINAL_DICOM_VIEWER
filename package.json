@@ -15,7 +15,10 @@
     "build:desktop": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop",
     "build:desktop:win": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:win",
     "build:desktop:mac": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:mac",
-    "build:desktop:linux": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:linux"
+    "build:desktop:linux": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:linux",
+    "build:desktop:linux:deb": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:linux:deb",
+    "build:desktop:linux:appimage": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:linux:appimage",
+    "build:desktop:linux:dir": "npm --prefix \"dicom ui viewer/frontend\" run build:desktop:linux:dir"
   },
   "dependencies": {
     "puppeteer": "^25.10.0"

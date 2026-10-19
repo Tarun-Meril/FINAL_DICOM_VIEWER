@@ -25,6 +25,9 @@ import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import dicomParser from 'dicom-parser';
 import { API_BASE_URL } from './config';
 import DecodeWorker from '../node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js?worker';
+import { parseDataSet } from './vr/dicom/parser';
+import { decodeFrame } from './vr/dicom/decode/decodeFrame';
+import { T } from './vr/dicom/dictionary';
 
 if (typeof window !== 'undefined') {
   (window as any).cornerstone = cornerstoneCore;
@@ -103,10 +106,16 @@ function customMetaDataProvider(type: string, imageId: string): any {
 
   // ── imagePlaneModule ────────────────────────────────────────────────────────
   if (type === 'imagePlaneModule') {
-    const iop = data.imageOrientationPatient || data.image_orientation || [1, 0, 0, 0, 1, 0];
-    const ipp = data.imagePositionPatient || data.image_position || [0, 0, 0];
-    const ps = data.pixelSpacing || data.pixel_spacing || [1.0, 1.0];
-    const st = Number(data.sliceThickness || data.slice_thickness || 1.0);
+    const rawIop = data.imageOrientationPatient || data.image_orientation;
+    const iop = (Array.isArray(rawIop) && rawIop.length >= 6) ? rawIop : [1, 0, 0, 0, 1, 0];
+
+    const rawIpp = data.imagePositionPatient || data.image_position;
+    const ipp = (Array.isArray(rawIpp) && rawIpp.length >= 3) ? rawIpp : [0, 0, 0];
+
+    const rawPs = data.pixelSpacing || data.pixel_spacing;
+    const ps = (Array.isArray(rawPs) && rawPs.length >= 2) ? rawPs : [1.0, 1.0];
+
+    const st = Number(data.sliceThickness || data.slice_thickness || 1.0) || 1.0;
 
     const forUID =
       data.frameOfReferenceUID ||
@@ -115,12 +124,12 @@ function customMetaDataProvider(type: string, imageId: string): any {
       data.series_instance_uid ||
       `synthetic-for-${imageId.substring(0, 30)}`;
 
-    const rowCosines = [Number(iop[0]), Number(iop[1]), Number(iop[2])];
-    const columnCosines = [Number(iop[3]), Number(iop[4]), Number(iop[5])];
+    const rowCosines = [Number(iop[0]) || 1, Number(iop[1]) || 0, Number(iop[2]) || 0];
+    const columnCosines = [Number(iop[3]) || 0, Number(iop[4]) || 1, Number(iop[5]) || 0];
 
     const spacingBetweenSlices = Number(
       data.spacingBetweenSlices || data.spacing_between_slices || st
-    );
+    ) || st;
 
     return {
       imageOrientationPatient: iop,
@@ -128,8 +137,8 @@ function customMetaDataProvider(type: string, imageId: string): any {
       rowCosines,
       columnCosines,
       pixelSpacing: ps,
-      columnPixelSpacing: Number(ps[1]),
-      rowPixelSpacing: Number(ps[0]),
+      columnPixelSpacing: Number(ps[1]) || 1.0,
+      rowPixelSpacing: Number(ps[0]) || 1.0,
       frameOfReferenceUID: forUID,
       columns: Number(data.columns || data.Columns || 512),
       rows: Number(data.rows || data.Rows || 512),
@@ -317,12 +326,14 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
       activeBase = matchBase[1];
     }
 
+    const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
     const candidateUrls = [
       `${activeBase}/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`,
       `${API_BASE_URL}/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`,
       `${typeof window !== 'undefined' ? window.location.origin : ''}/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`,
-      `http://127.0.0.1:3001/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`,
-      `http://127.0.0.1:8000/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}`
+      !isRemote ? `http://127.0.0.1:3001/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}` : '',
+      !isRemote ? `http://127.0.0.1:8000/api/instances/${sopUid}/png?wc=${wc}&ww=${ww}` : ''
     ].filter(Boolean);
     const uniqueUrls = [...new Set(candidateUrls)];
 
@@ -341,7 +352,131 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
     }
 
     if (!response || !response.ok) {
-      throw new Error(`Failed to fetch PNG frame from server for instance ${sopUid}`);
+      // Fetch the real DICOM instance file from PACS
+      const dcmUrls = [
+        `${activeBase}/api/instances/${sopUid}/file`,
+        `${API_BASE_URL}/api/instances/${sopUid}/file`,
+        `${typeof window !== 'undefined' ? window.location.origin : ''}/api/instances/${sopUid}/file`,
+        !isRemote ? `http://127.0.0.1:3001/api/instances/${sopUid}/file` : '',
+        !isRemote ? `http://localhost:3001/api/instances/${sopUid}/file` : '',
+      ].filter(Boolean);
+      let dcmBuf: ArrayBuffer | null = null;
+      for (const dUrl of [...new Set(dcmUrls)]) {
+        try {
+          const dRes = await fetch(dUrl);
+          if (dRes.ok) {
+            dcmBuf = await dRes.arrayBuffer();
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (dcmBuf && dcmBuf.byteLength > 0) {
+        const ds = parseDataSet(new Uint8Array(dcmBuf));
+        const decoded = await decodeFrame(ds, 0);
+
+        const width = decoded.columns;
+        const height = decoded.rows;
+        const numPixels = width * height;
+        const isSigned = decoded.signed || (decoded.pixelData instanceof Int16Array);
+        const pixels = isSigned
+          ? (decoded.pixelData instanceof Int16Array ? decoded.pixelData : new Int16Array(decoded.pixelData))
+          : (decoded.pixelData instanceof Uint8Array ? decoded.pixelData : (decoded.pixelData instanceof Uint16Array ? decoded.pixelData : new Uint16Array(decoded.pixelData)));
+
+        let minPixelValue = Infinity;
+        let maxPixelValue = -Infinity;
+
+        for (let i = 0; i < numPixels; i++) {
+          const val = pixels[i];
+          if (val < minPixelValue) minPixelValue = val;
+          if (val > maxPixelValue) maxPixelValue = val;
+        }
+
+        const dcmSlope = parseNumeric(ds.string(T.RescaleSlope) ?? ds.string('x00281053'), NaN);
+        const dcmIntercept = parseNumeric(ds.string(T.RescaleIntercept) ?? ds.string('x00281052'), NaN);
+        const effectiveSlope = !isNaN(dcmSlope) ? dcmSlope : slope;
+        const effectiveIntercept = !isNaN(dcmIntercept) ? dcmIntercept : intercept;
+
+        let dcmWc = parseNumeric(ds.string(T.WindowCenter) ?? ds.string('x00281050'), NaN);
+        let dcmWw = parseNumeric(ds.string(T.WindowWidth) ?? ds.string('x00281051'), NaN);
+        let effectiveWc = !isNaN(dcmWc) ? dcmWc : wc;
+        let effectiveWw = !isNaN(dcmWw) && dcmWw > 0 ? dcmWw : ww;
+
+        if (isNaN(effectiveWc) || isNaN(effectiveWw) || effectiveWw <= 0) {
+          if (modality === 'CT') {
+            effectiveWc = 40;
+            effectiveWw = 400;
+          } else {
+            effectiveWc = (minPixelValue + maxPixelValue) / 2;
+            effectiveWw = Math.max(1, maxPixelValue - minPixelValue);
+          }
+        }
+
+        const ps = meta.pixelSpacing || meta.pixel_spacing || [1, 1];
+
+        let voxelManager: any;
+        if (utilities?.VoxelManager?.createImageVoxelManager) {
+          try {
+            voxelManager = utilities.VoxelManager.createImageVoxelManager({
+              scalarData: pixels,
+              width,
+              height,
+              numberOfComponents: 1,
+            });
+          } catch (_) {}
+        }
+
+        const TypedArrayConstructor = isSigned ? Int16Array : (pixels instanceof Uint8Array ? Uint8Array : Uint16Array);
+
+        if (!voxelManager) {
+          voxelManager = {
+            getScalarData: () => pixels,
+            getScalarDataLength: () => pixels.length,
+            getVoxel: (index: number) => pixels[index],
+            setVoxel: (index: number, val: number) => { (pixels as any)[index] = val; },
+            getVoxelAtMatIndex: (x: number, y: number, _z: number) => pixels[y * width + x],
+            setVoxelAtMatIndex: (x: number, y: number, _z: number, val: number) => { (pixels as any)[y * width + x] = val; },
+            getBounds: () => [0, width - 1, 0, height - 1, 0, 0],
+            getDimensions: () => [width, height, 1],
+            getConstructor: () => TypedArrayConstructor,
+            _getConstructor: () => TypedArrayConstructor,
+            getMiddleSliceData: () => ({ scalarData: pixels }),
+          };
+        }
+
+        return {
+          imageId,
+          dataType: isSigned ? 'Int16Array' : (pixels instanceof Uint8Array ? 'Uint8Array' : 'Uint16Array'),
+          minPixelValue,
+          maxPixelValue,
+          slope: effectiveSlope,
+          intercept: effectiveIntercept,
+          windowCenter: [effectiveWc],
+          windowWidth: [effectiveWw],
+          getPixelData: () => pixels,
+          rows: height,
+          columns: width,
+          height,
+          width,
+          color: false,
+          rgba: false,
+          invert: false,
+          columnPixelSpacing: Number(ps[0]),
+          rowPixelSpacing: Number(ps[1]),
+          sizeInBytes: pixels.byteLength,
+          numberOfComponents: 1,
+          voxelManager,
+          imageFrame: {
+            rows: height,
+            columns: width,
+            pixelData: pixels,
+            smallestPixelValue: minPixelValue,
+            largestPixelValue: maxPixelValue,
+          },
+        };
+      }
+
+      throw new Error(`Failed to fetch PNG frame or DICOM slice from server for instance ${sopUid}`);
     }
     const blob = await response.blob();
     const imageBitmap = await createImageBitmap(blob);
@@ -538,17 +673,31 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
 
 
 function wadoImageLoaderWithFallback(imageId: string, options: any) {
-  const sopMatch = imageId.match(/\/instances\/([^\/]+)\/file/);
+  let normalizedImageId = imageId;
+  if (normalizedImageId.includes(':8000')) {
+    normalizedImageId = normalizedImageId.replace(':8000', ':3001');
+  }
+
+  const sopMatch = normalizedImageId.match(/\/instances\/([^\/]+)\/file/);
   const sopUid = sopMatch ? sopMatch[1] : null;
 
   try {
-    const res = dicomImageLoader.wadouri.loadImage(imageId, options);
+    const res = dicomImageLoader.wadouri.loadImage(normalizedImageId, options);
     if (res && res.promise) {
       return {
         promise: res.promise.catch((err: any) => {
+          if (sopUid && !normalizedImageId.includes(':3001')) {
+            const p3001Id = `wadouri:http://127.0.0.1:3001/api/instances/${sopUid}/file`;
+            try {
+              const res2 = dicomImageLoader.wadouri.loadImage(p3001Id, options);
+              if (res2 && res2.promise) {
+                return res2.promise.catch(() => loadServerPixelFrameImage(normalizedImageId, sopUid));
+              }
+            } catch (_) {}
+          }
           if (sopUid) {
             console.warn(`[Cornerstone3D] Native wadouri loadImage failed for ${sopUid}, using server PNG fallback:`, err);
-            return loadServerPixelFrameImage(imageId, sopUid);
+            return loadServerPixelFrameImage(normalizedImageId, sopUid);
           }
           throw err;
         }),
@@ -560,7 +709,7 @@ function wadoImageLoaderWithFallback(imageId: string, options: any) {
     if (sopUid) {
       console.warn(`[Cornerstone3D] Synchronous error loading ${sopUid}, falling back to PNG:`, err);
       return {
-        promise: loadServerPixelFrameImage(imageId, sopUid),
+        promise: loadServerPixelFrameImage(normalizedImageId, sopUid),
         cancelFn: () => { },
       };
     }

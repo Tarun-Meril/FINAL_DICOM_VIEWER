@@ -1,0 +1,90 @@
+name: Build and Package MerilView Workstation
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Ubuntu Linux (.deb & AppImage)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'dicom ui viewer/frontend/package-lock.json'
+
+      - name: Install system dependencies for Linux packaging
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools desktop-file-utils
+
+      - name: Install frontend dependencies
+        working-directory: dicom ui viewer/frontend
+        run: npm ci
+
+      - name: Build frontend production bundle & stage WASM codecs
+        working-directory: dicom ui viewer/frontend
+        run: npm run build
+
+      - name: Package Linux Debian (.deb) and AppImage artifacts
+        working-directory: dicom ui viewer/frontend
+        run: npx electron-builder --linux deb AppImage
+        env:
+          ELECTRON_BUILD: 'true'
+
+      - name: Verify generated Linux artifacts
+        run: |
+          ls -la "dicom ui viewer/frontend/release"
+          find "dicom ui viewer/frontend/release" -type f \( -name "*.deb" -o -name "*.AppImage" \) -exec ls -lh {} +
+
+      - name: Upload Linux Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: merilview-ubuntu-linux-x86_64
+          path: |
+            dicom ui viewer/frontend/release/*.deb
+            dicom ui viewer/frontend/release/*.AppImage
+          retention-days: 14
+
+  build-windows:
+    name: Build Windows (.exe Installer)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'dicom ui viewer/frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: dicom ui viewer/frontend
+        run: npm ci
+
+      - name: Build and package Windows desktop installer
+        working-directory: dicom ui viewer/frontend
+        run: npm run build:desktop:win
+        env:
+          ELECTRON_BUILD: 'true'
+
+      - name: Upload Windows Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: merilview-windows-installer
+          path: dicom ui viewer/frontend/release/MerilView Setup.exe
+          retention-days: 14

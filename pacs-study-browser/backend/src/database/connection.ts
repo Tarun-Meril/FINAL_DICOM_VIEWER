@@ -27,10 +27,33 @@ class Database {
 
   private rebuildIndex() {
     this.instanceMap.clear();
+    let changed = false;
+    const storageDir = ENV.STORAGE_DIR;
     for (const inst of this.data.instances) {
       if (inst && inst.sopInstanceUid) {
+        if (!inst.filePath || !fs.existsSync(inst.filePath)) {
+          if (inst.studyInstanceUid && inst.seriesInstanceUid) {
+            const candidate = path.join(storageDir, inst.studyInstanceUid, inst.seriesInstanceUid, `${inst.sopInstanceUid}.dcm`);
+            if (fs.existsSync(candidate)) {
+              inst.filePath = candidate;
+              changed = true;
+            }
+          }
+          if (!inst.filePath || !fs.existsSync(inst.filePath)) {
+            const candidate2 = path.join(storageDir, `${inst.sopInstanceUid}.dcm`);
+            if (fs.existsSync(candidate2)) {
+              inst.filePath = candidate2;
+              changed = true;
+            }
+          }
+        }
         this.instanceMap.set(inst.sopInstanceUid, inst);
       }
+    }
+    if (changed) {
+      try {
+        fs.writeFileSync(ENV.DB_PATH, JSON.stringify(this.data, null, 2), 'utf-8');
+      } catch (_) {}
     }
   }
 
@@ -46,12 +69,15 @@ class Database {
 
     if (fs.existsSync(ENV.DB_PATH)) {
       try {
-        const raw = fs.readFileSync(ENV.DB_PATH, 'utf-8');
-        this.data = JSON.parse(raw);
-        this.rebuildIndex();
+        const raw = fs.readFileSync(ENV.DB_PATH, 'utf-8').replace(/^\uFEFF/, '').trim();
+        if (raw) {
+          this.data = JSON.parse(raw);
+          this.rebuildIndex();
+        } else {
+          this.save();
+        }
       } catch (err) {
-        console.error('Failed to parse database file, initializing empty database:', err);
-        this.save();
+        console.error('Failed to parse database file, attempting fallback restore:', err);
       }
     } else {
       this.save();

@@ -25,18 +25,23 @@ function baseUrl(): string {
   try {
     const g = typeof globalThis !== 'undefined' ? (globalThis as any) : null;
     if (g?.location) {
-      if (g.location.origin && g.location.origin !== 'null') {
+      const href = String(g.location.href || '');
+      const isFile = g.location.protocol === 'file:' || href.startsWith('file:') || g.location.origin === 'file://' || g.location.origin === 'null';
+      if (isFile && href) {
+        const cleanHref = href.split('#')[0].split('?')[0];
+        const lastSlash = cleanHref.lastIndexOf('/');
+        if (lastSlash !== -1) {
+          return cleanHref.substring(0, lastSlash + 1);
+        }
+      }
+      if (!isFile && g.location.origin && g.location.origin !== 'null') {
         return g.location.origin.endsWith('/') ? g.location.origin : `${g.location.origin}/`;
       }
-      if (g.location.href) {
-        const href = String(g.location.href);
-        const assetsIdx = href.lastIndexOf('/assets/');
-        if (assetsIdx !== -1) {
-          return href.substring(0, assetsIdx + 1);
-        }
-        const lastSlash = href.lastIndexOf('/');
+      if (href) {
+        const cleanHref = href.split('#')[0].split('?')[0];
+        const lastSlash = cleanHref.lastIndexOf('/');
         if (lastSlash !== -1) {
-          return href.substring(0, lastSlash + 1);
+          return cleanHref.substring(0, lastSlash + 1);
         }
       }
     }

@@ -1,0 +1,8 @@
+[build]
+  command = "cd \"dicom ui viewer/frontend\" && npm install && npm run build"
+  publish = "dicom ui viewer/frontend/dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -104,7 +104,7 @@ export default function MainViewer({
   // If the currently viewed series has multiple slices, use it; otherwise auto-promote to the main volumetric CT series
   const chosenSeries = (activeSeriesObj && getSeriesCount(activeSeriesObj) > 1)
     ? activeSeriesObj
-    : (sortedVolumetric[0] || activeSeriesObj);
+    : (activeSeriesObj || sortedVolumetric[0]);
 
   const mprSeriesUid: string | undefined =
     chosenSeries
@@ -162,10 +162,10 @@ export default function MainViewer({
       .then((res) => res.json())
       .then((json) => {
         setIsLoading(false);
-        if (json.status === 'success') {
-          const results = json.results || [];
-          const patientName = results[0]?.patient_name || 'DICOM Study';
-          const studyUid = results[0]?.study_uid;
+        if (json.status === 'success' || json.success) {
+          const results = json.results || json.data || [];
+          const patientName = results[0]?.patient_name || results[0]?.patientName || 'DICOM Study';
+          const studyUid = results[0]?.study_uid || results[0]?.studyInstanceUid;
           
           alert(`Import successful! Uploaded ${files.length} DICOM instances.`);
           if (studyUid) {
@@ -176,7 +176,7 @@ export default function MainViewer({
             alert('Upload succeeded but no Study UID was resolved.');
           }
         } else {
-          alert('Upload failed: Invalid DICOM response');
+          alert('Upload failed: ' + (json.message || 'Invalid DICOM response'));
         }
       })
       .catch((err) => {
@@ -320,6 +320,7 @@ export default function MainViewer({
             {vizMode === 'vr' && (
               <div className="absolute inset-0 z-10 w-full h-full">
                 <VRViewerCore
+                  key={`vr_${study?.studyInstanceUid || study?.study_instance_uid || ''}_${mprSeriesUid || ''}`}
                   studyUID={study?.studyInstanceUid || study?.study_instance_uid}
                   seriesUID={mprSeriesUid}
                   apiBase={API_BASE_URL}
@@ -334,8 +335,10 @@ export default function MainViewer({
             {vizMode === 'mpr' && (
               <div className="absolute inset-0 z-10 w-full h-full">
                 <MPRViewerCore
+                  key={`mpr_${study?.studyInstanceUid || study?.study_instance_uid || ''}_${mprSeriesUid || ''}`}
                   studyUID={study?.studyInstanceUid || study?.study_instance_uid}
                   seriesUID={mprSeriesUid}
+                  apiBase={API_BASE_URL}
                   onClose={() => onActionCommand?.('mpr')}
                   variant="embedded"
                 />

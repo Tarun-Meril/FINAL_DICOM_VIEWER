@@ -33,18 +33,20 @@ const distCandidates = [
   path.resolve(__dirname, '../../dicom ui viewer/frontend/dist'),
   path.resolve(__dirname, '../../frontend/dist'),
   path.resolve(__dirname, '../frontend/dist'),
+  path.resolve(__dirname, './dist'),
+  path.resolve(__dirname, '.'),
   path.resolve(process.cwd(), 'dicom ui viewer/frontend/dist'),
   path.resolve(process.cwd(), '../dicom ui viewer/frontend/dist'),
   path.resolve(process.cwd(), 'dist'),
 ];
-const frontendDist = distCandidates.find(p => fs.existsSync(p));
+const frontendDist = distCandidates.find(p => fs.existsSync(path.join(p, 'index.html')));
 
 if (frontendDist) {
   console.log(`[PACS Backend] Serving DICOM Viewer web UI from: ${frontendDist}`);
   app.use(express.static(frontendDist));
   
   // SPA routing for web application routes
-  app.get(['/share/*', '/viewer/*', '/pacs/*', '/share', '/viewer', '/pacs'], (req, res) => {
+  app.get(['/', '/share/*', '/viewer/*', '/pacs/*', '/share', '/viewer', '/pacs'], (req, res) => {
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 } else {

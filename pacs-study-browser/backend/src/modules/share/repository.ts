@@ -1,5 +1,3 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-import { supabase as defaultSupabase } from './supabase';
 import { db } from '../../database/connection';
 import { ENV } from '../../config/env';
 
@@ -35,209 +33,234 @@ export interface AuditLogDb {
 }
 
 export class ShareRepository {
-  private supabase: SupabaseClient;
-  private useLocalFallback: boolean;
+  private supabaseClient?: any;
+  private useLocalOnly: boolean;
 
-  constructor(supabaseClient?: SupabaseClient) {
-    this.supabase = supabaseClient ?? defaultSupabase;
-    this.useLocalFallback = !ENV.SUPABASE.URL || ENV.SUPABASE.URL.includes('placeholder-url');
+  constructor(supabaseClient?: any) {
+    this.supabaseClient = supabaseClient;
+    // Pure local drive mode by default
+    this.useLocalOnly = !ENV.USE_SUPABASE && !supabaseClient;
   }
 
   /**
-   * Creates a new share link entry.
+   * Creates a new share link entry stored locally on the drive.
    */
   async createShareLink(link: ShareLinkDb): Promise<ShareLinkDb> {
-    // Always persist to local db as well for instant resilience
-    const newLink = { ...link, id: link.id || Date.now().toString(), created_at: link.created_at || new Date().toISOString(), updated_at: link.updated_at || new Date().toISOString() };
+    const newLink = {
+      ...link,
+      id: link.id || Date.now().toString(),
+      created_at: link.created_at || new Date().toISOString(),
+      updated_at: link.updated_at || new Date().toISOString()
+    };
+    
     const links = db.getShareLinks();
     const existingIdx = links.findIndex(l => l.token === link.token);
-    if (existingIdx >= 0) links[existingIdx] = newLink;
-    else links.push(newLink);
+    if (existingIdx >= 0) {
+      links[existingIdx] = newLink;
+    } else {
+      links.push(newLink);
+    }
     db.setShareLinks(links);
 
-    if (this.useLocalFallback) {
+    if (this.useLocalOnly || !this.supabaseClient) {
       return newLink;
     }
 
     try {
-      const { data, error } = await this.supabase
+      const { data, error } = await this.supabaseClient
         .from('share_links')
         .insert(link)
         .select()
         .single();
 
       if (error) {
-        console.warn(`[ShareRepository] Supabase insert warning (saved locally): ${error.message}`);
         return newLink;
       }
-      return data;
-    } catch (err: any) {
-      console.warn(`[ShareRepository] Supabase connection failed during insert (saved locally): ${err.message}`);
+      return data || newLink;
+    } catch {
       return newLink;
     }
   }
 
   /**
-   * Retrieves a share link entry by its token.
+   * Retrieves a share link entry by its token from the local database.
    */
   async getShareLinkByToken(token: string): Promise<ShareLinkDb | null> {
-    if (this.useLocalFallback) {
-      const links = db.getShareLinks();
-      return links.find(l => l.token === token) || null;
+    const links = db.getShareLinks();
+    const localMatch = links.find(l => l.token === token) || null;
+    if (this.useLocalOnly || !this.supabaseClient) {
+      return localMatch;
     }
 
     try {
-      const { data, error } = await this.supabase
+      const { data, error } = await this.supabaseClient
         .from('share_links')
         .select('*')
         .eq('token', token)
         .maybeSingle();
 
-      if (error) {
-        console.warn(`[ShareRepository] Supabase query error, checking local db: ${error.message}`);
-        const links = db.getShareLinks();
-        return links.find(l => l.token === token) || null;
+      if (error || !data) {
+        return localMatch;
       }
-      if (data) return data;
-      
-      // If not found in Supabase, also check local db
-      const links = db.getShareLinks();
-      return links.find(l => l.token === token) || null;
-    } catch (err: any) {
-      console.warn(`[ShareRepository] Supabase fetch failed, falling back to local db: ${err.message}`);
-      const links = db.getShareLinks();
-      return links.find(l => l.token === token) || null;
+      return data;
+    } catch {
+      return localMatch;
     }
   }
 
   /**
-   * Retrieves all active (unrevoked and unexpired) share links.
+   * Retrieves all active (unrevoked and unexpired) share links from the local drive.
    */
   async listActiveShareLinks(): Promise<ShareLinkDb[]> {
-    if (this.useLocalFallback) {
-      const now = new Date().getTime();
-      return db.getShareLinks().filter(l => !l.revoked && (!l.expires_at || new Date(l.expires_at).getTime() > now));
+    const now = new Date().getTime();
+    const active = db.getShareLinks().filter(l => !l.revoked && (!l.expires_at || new Date(l.expires_at).getTime() > now));
+
+    if (this.useLocalOnly || !this.supabaseClient) {
+      return active;
     }
 
-    const now = new Date().toISOString();
-    const { data, error } = await this.supabase
-      .from('share_links')
-      .select('*')
-      .eq('revoked', false)
-      .or(`expires_at.is.null,expires_at.gt.${now}`);
+    try {
+      const isoNow = new Date().toISOString();
+      const { data, error } = await this.supabaseClient
+        .from('share_links')
+        .select('*')
+        .eq('revoked', false)
+        .or(`expires_at.is.null,expires_at.gt.${isoNow}`);
 
-    if (error) {
-      throw new Error(`Database error listing active share links: ${error.message}`);
+      if (error) return active;
+      return data || active;
+    } catch {
+      return active;
     }
-    return data || [];
   }
 
   /**
-   * Updates an existing share link matched by token.
+   * Updates an existing share link matched by token in local storage.
    */
   async updateShareLink(token: string, updates: Partial<ShareLinkDb>): Promise<ShareLinkDb> {
-    if (this.useLocalFallback) {
-      const links = db.getShareLinks();
-      const idx = links.findIndex(l => l.token === token);
-      if (idx === -1) throw new Error(`Database error updating share link: not found`);
-      links[idx] = { ...links[idx], ...updates, updated_at: new Date().toISOString() };
-      db.setShareLinks(links);
-      return links[idx];
+    const links = db.getShareLinks();
+    const idx = links.findIndex(l => l.token === token);
+    if (idx === -1) {
+      throw new Error(`Database error updating share link: token ${token} not found`);
+    }
+    
+    links[idx] = { ...links[idx], ...updates, updated_at: new Date().toISOString() };
+    db.setShareLinks(links);
+    const updated = links[idx];
+
+    if (this.useLocalOnly || !this.supabaseClient) {
+      return updated;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_links')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('token', token)
-      .select()
-      .single();
+    try {
+      const { data, error } = await this.supabaseClient
+        .from('share_links')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('token', token)
+        .select()
+        .single();
 
-    if (error) {
-      throw new Error(`Database error updating share link: ${error.message}`);
+      if (error) return updated;
+      return data || updated;
+    } catch {
+      return updated;
     }
-    return data;
   }
 
   /**
-   * Hard deletes a share link entry matched by token from the database.
+   * Hard deletes a share link entry matched by token from local storage.
    */
   async deleteShareLink(token: string): Promise<void> {
-    if (this.useLocalFallback) {
-      const links = db.getShareLinks().filter(l => l.token !== token);
-      db.setShareLinks(links);
+    const links = db.getShareLinks().filter(l => l.token !== token);
+    db.setShareLinks(links);
+
+    if (this.useLocalOnly || !this.supabaseClient) {
       return;
     }
 
-    const { error } = await this.supabase
-      .from('share_links')
-      .delete()
-      .eq('token', token);
-
-    if (error) {
-      throw new Error(`Database error deleting share link: ${error.message}`);
-    }
+    try {
+      await this.supabaseClient
+        .from('share_links')
+        .delete()
+        .eq('token', token);
+    } catch (_) {}
   }
 
   /**
-   * Creates a new access audit log entry.
+   * Creates a new access audit log entry in the local drive database.
    */
   async createAuditLog(log: AuditLogDb): Promise<AuditLogDb> {
-    if (this.useLocalFallback) {
-      const newLog = { ...log, id: Date.now().toString(), created_at: new Date().toISOString() };
-      db.addShareAuditLog(newLog);
+    const newLog: AuditLogDb = {
+      ...log,
+      id: log.id || Date.now().toString(),
+      created_at: log.created_at || new Date().toISOString()
+    };
+    db.addShareAuditLog(newLog);
+
+    if (this.useLocalOnly || !this.supabaseClient) {
       return newLog;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_audit_logs')
-      .insert(log)
-      .select()
-      .single();
+    try {
+      const { data, error } = await this.supabaseClient
+        .from('share_audit_logs')
+        .insert(log)
+        .select()
+        .single();
 
-    if (error) {
-      throw new Error(`Database error creating audit log: ${error.message}`);
+      if (error) return newLog;
+      return data || newLog;
+    } catch {
+      return newLog;
     }
-    return data;
   }
 
   /**
-   * Retrieves all share links (including active, expired, and revoked links).
+   * Retrieves all share links from the local drive (active, expired, and revoked).
    */
   async listAllShareLinks(): Promise<ShareLinkDb[]> {
-    if (this.useLocalFallback) {
-      const links = db.getShareLinks();
-      return [...links].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    const links = db.getShareLinks();
+    const sorted = [...links].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+    if (this.useLocalOnly || !this.supabaseClient) {
+      return sorted;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_links')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await this.supabaseClient
+        .from('share_links')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      throw new Error(`Database error listing all share links: ${error.message}`);
+      if (error) return sorted;
+      return data || sorted;
+    } catch {
+      return sorted;
     }
-    return data || [];
   }
 
   /**
-   * Retrieves all audit logs for a specific share token.
+   * Retrieves all audit logs for a specific share token from the local drive.
    */
   async getAuditLogsByToken(token: string): Promise<AuditLogDb[]> {
-    if (this.useLocalFallback) {
-      const logs = db.getShareAuditLogs().filter(l => l.share_token === token);
-      return [...logs].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    const logs = db.getShareAuditLogs().filter(l => l.share_token === token);
+    const sorted = [...logs].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+    if (this.useLocalOnly || !this.supabaseClient) {
+      return sorted;
     }
 
-    const { data, error } = await this.supabase
-      .from('share_audit_logs')
-      .select('*')
-      .eq('share_token', token)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await this.supabaseClient
+        .from('share_audit_logs')
+        .select('*')
+        .eq('share_token', token)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      throw new Error(`Database error fetching audit logs: ${error.message}`);
+      if (error) return sorted;
+      return data || sorted;
+    } catch {
+      return sorted;
     }
-    return data || [];
   }
 }

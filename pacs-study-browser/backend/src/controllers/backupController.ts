@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../modules/share/supabase';
+import { db } from '../database/connection';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../modules/share/logger';
@@ -10,11 +10,11 @@ const BACKUP_DIR = ENV.BACKUP_DIR || path.join(__dirname, '../../data/backups');
 export class BackupController {
   /**
    * GET /api/admin/backup
-   * Queries Supabase tables, saves them to a local JSON backup file, and returns the payload.
+   * Queries local database tables, saves them to a local JSON backup file on the drive, and returns the payload.
    */
   public static exportBackup = async (req: Request, res: Response) => {
     try {
-      logger.info('application', 'Initiating share metadata backup');
+      logger.info('application', 'Initiating local share metadata backup');
 
       // Ensure backup directory exists
       try {
@@ -25,31 +25,21 @@ export class BackupController {
         logger.warn('application', `Could not create BACKUP_DIR at ${BACKUP_DIR}: ${dirErr}`);
       }
 
-      // Query share links
-      const { data: links, error: linksError } = await supabase
-        .from('share_links')
-        .select('*');
-
-      if (linksError) throw new Error(`Failed to query share links: ${linksError.message}`);
-
-      // Query audit logs
-      const { data: logs, error: logsError } = await supabase
-        .from('share_audit_logs')
-        .select('*');
-
-      if (logsError) throw new Error(`Failed to query audit logs: ${logsError.message}`);
+      // Query local share links and audit logs
+      const links = db.getShareLinks() || [];
+      const logs = db.getShareAuditLogs() || [];
 
       const backupPayload = {
         metadata: {
           version: '1.0.0',
           exportedAt: new Date().toISOString(),
           recordCount: {
-            share_links: links ? links.length : 0,
-            share_audit_logs: logs ? logs.length : 0
+            share_links: links.length,
+            share_audit_logs: logs.length
           }
         },
-        share_links: links || [],
-        share_audit_logs: logs || []
+        share_links: links,
+        share_audit_logs: logs
       };
 
       // Save locally to database backups directory
@@ -74,7 +64,7 @@ export class BackupController {
 
   /**
    * POST /api/admin/restore
-   * Restores metadata from a JSON payload in request body or a local backup file name.
+   * Restores metadata from a JSON payload in request body or a local backup file name into the local database.
    */
   public static restoreBackup = async (req: Request, res: Response) => {
     try {
@@ -95,33 +85,25 @@ export class BackupController {
         return res.status(400).json({ error: 'Malformed backup payload structure', reasons: validation.reasons });
       }
 
-      logger.info('application', 'Initiating restore operation');
+      logger.info('application', 'Initiating restore operation to local database');
 
-      // Clear existing records and seed the new ones
       // 1. Restore share links
-      if (backupPayload.share_links && backupPayload.share_links.length > 0) {
-        // Upsert into share_links table
-        const { error: linksRestoreErr } = await supabase
-          .from('share_links')
-          .upsert(backupPayload.share_links);
-
-        if (linksRestoreErr) {
-          throw new Error(`Failed restoring share links: ${linksRestoreErr.message}`);
-        }
+      if (backupPayload.share_links && Array.isArray(backupPayload.share_links)) {
+        const existingLinks = db.getShareLinks();
+        const map = new Map<string, any>();
+        existingLinks.forEach(l => map.set(l.token, l));
+        backupPayload.share_links.forEach((l: any) => map.set(l.token, l));
+        db.setShareLinks(Array.from(map.values()));
       }
 
       // 2. Restore share audit logs
-      if (backupPayload.share_audit_logs && backupPayload.share_audit_logs.length > 0) {
-        const { error: logsRestoreErr } = await supabase
-          .from('share_audit_logs')
-          .upsert(backupPayload.share_audit_logs);
-
-        if (logsRestoreErr) {
-          throw new Error(`Failed restoring audit logs: ${logsRestoreErr.message}`);
-        }
+      if (backupPayload.share_audit_logs && Array.isArray(backupPayload.share_audit_logs)) {
+        backupPayload.share_audit_logs.forEach((log: any) => {
+          db.addShareAuditLog(log);
+        });
       }
 
-      logger.info('application', 'Restore operation completed successfully');
+      logger.info('application', 'Restore operation completed successfully to local drive');
       return res.status(200).json({
         message: 'Restore operation completed successfully',
         restoredRecords: {
