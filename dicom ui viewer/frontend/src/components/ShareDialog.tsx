@@ -83,7 +83,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   const isRemoteDomain = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.42.0.130:3001');
-  const defaultCloudUrl = isRemoteDomain ? detectedOrigin : 'https://pacs-dicom.vercel.app';
+  const defaultCloudUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app');
   const [hostMode, setHostMode] = useState<'lan' | 'cloud' | 'desktop' | 'custom'>(() => {
     if (isRemoteDomain) return 'custom';
     return (localStorage.getItem('merilview_share_host_mode') as any) || 'lan';
