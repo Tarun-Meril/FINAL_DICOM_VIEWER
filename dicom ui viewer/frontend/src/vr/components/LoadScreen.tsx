@@ -4,7 +4,7 @@ import { loadDataset } from '@vr/services/datasetLoader';
 import { createSession, clearSession } from '@vr/state/session';
 import { probeGpu } from '@3d/rendering/engine';
 import { MedViewError } from '@3d/core/errors';
-import { API_BASE_URL as DEFAULT_API_BASE } from '../../config';
+import { API_BASE_URL as DEFAULT_API_BASE, getDynamicApiBaseUrl } from '../../config';
 import { generateSyntheticVolumeBuffers } from '../../utils/syntheticDicomVolume';
 
 export interface LoadScreenProps {
@@ -77,11 +77,12 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
 
     const candidateBases = [
       passedApiBase,
+      getDynamicApiBaseUrl(),
       DEFAULT_API_BASE,
+      'http://127.0.0.1:3001',
+      'http://localhost:3001',
       'http://127.0.0.1:8000',
       'http://localhost:8000',
-      'http://127.0.0.1:3001',
-      'http://localhost:3001'
     ].filter(Boolean) as string[];
     const uniqueBases = [...new Set(candidateBases)];
 
