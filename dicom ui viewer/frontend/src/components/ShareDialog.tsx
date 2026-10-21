@@ -81,6 +81,11 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     return (typeof localStorage !== 'undefined' ? localStorage.getItem('merilview_share_custom_host') : null) || defaultCloudUrl;
   });
   const [isEditingCustomHost, setIsEditingCustomHost] = useState<boolean>(false);
+  const [cloudflareUrl, setCloudflareUrl] = useState<string>(() => {
+    return (typeof localStorage !== 'undefined'
+      ? localStorage.getItem('merilview_cloudflare_tunnel_url') || localStorage.getItem('merilview_api_host')
+      : '') || '';
+  });
 
   // Keyboard Navigation: Focus Dialog on Mount
   useEffect(() => {
@@ -164,7 +169,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
       const token = data.token;
       setTokenInfo(data);
 
-      const generatedUrl = buildShareUrl(token, hostMode, customHost);
+      const generatedUrl = buildShareUrl(token, hostMode, customHost, cloudflareUrl);
       setShareLink(generatedUrl);
       
       // Generate High-Density QR Code with proper quiet zone margin and Level M error correction
@@ -180,7 +185,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     }
   };
 
-  const buildShareUrl = (token: string, mode: 'lan' | 'cloud' | 'desktop' | 'custom', customUrl: string) => {
+  const buildShareUrl = (token: string, mode: 'lan' | 'cloud' | 'desktop' | 'custom', customUrl: string, cfUrl?: string) => {
     if (mode === 'desktop') {
       return `merilview://share/${token}`;
     }
@@ -192,14 +197,36 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     } else if (mode === 'custom') {
       base = customUrl.trim().replace(/\/+$/, '') || defaultCloudUrl;
     }
-    return `${base}/share/${token}`;
+
+    const cleanCf = (cfUrl !== undefined ? cfUrl : cloudflareUrl).trim().replace(/\/+$/, '');
+    const apiParam = (mode === 'cloud' && cleanCf) ? `?apiHost=${encodeURIComponent(cleanCf)}` : '';
+    return `${base}/share/${token}${apiParam}`;
+  };
+
+  const handleCloudflareUrlChange = async (url: string) => {
+    setCloudflareUrl(url);
+    if (typeof localStorage !== 'undefined') {
+      const clean = url.trim().replace(/\/+$/, '');
+      if (clean) {
+        localStorage.setItem('merilview_cloudflare_tunnel_url', clean);
+        localStorage.setItem('merilview_api_host', clean);
+      }
+    }
+    if (tokenInfo?.token) {
+      const newUrl = buildShareUrl(tokenInfo.token, hostMode, customHost, url);
+      setShareLink(newUrl);
+      try {
+        const qr = await QRCode.toDataURL(newUrl, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
+        setQrCodeDataUrl(qr);
+      } catch (_) {}
+    }
   };
 
   const handleHostModeChange = async (newMode: 'lan' | 'cloud' | 'desktop' | 'custom') => {
     setHostMode(newMode);
     localStorage.setItem('merilview_share_host_mode', newMode);
     if (tokenInfo?.token) {
-      const url = buildShareUrl(tokenInfo.token, newMode, customHost);
+      const url = buildShareUrl(tokenInfo.token, newMode, customHost, cloudflareUrl);
       setShareLink(url);
       try {
         const qr = await QRCode.toDataURL(url, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
@@ -213,7 +240,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     localStorage.setItem('merilview_share_custom_host', newHost);
     setIsEditingCustomHost(false);
     if (tokenInfo?.token && hostMode === 'custom') {
-      const url = buildShareUrl(tokenInfo.token, 'custom', newHost);
+      const url = buildShareUrl(tokenInfo.token, 'custom', newHost, cloudflareUrl);
       setShareLink(url);
       try {
         const qr = await QRCode.toDataURL(url, { width: 360, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
@@ -609,11 +636,61 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                     </button>
                   </div>
                 )}
+                {/* Cloudflare Tunnel Configuration when Netlify Cloud is selected */}
+                {hostMode === 'cloud' && (
+                  <div className="flex flex-col gap-1.5 mt-2 bg-[#1C1F26] border border-[#353C48] rounded-[4px] p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse"></span>
+                        Cloudflare Tunnel URL (Backend)
+                      </span>
+                      <span className="text-[10px] text-[#3B82F6] font-mono">
+                        Netlify + Cloudflare + Local D: Drive
+                      </span>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={cloudflareUrl}
+                        onChange={(e) => handleCloudflareUrlChange(e.target.value)}
+                        placeholder="e.g. https://your-tunnel.trycloudflare.com or https://dicom.yourdomain.com"
+                        className="flex-1 bg-[#14171C] border border-[#252B34] rounded-[4px] px-2.5 py-1.5 text-[11px] text-white font-mono outline-none focus:border-[#3B82F6]"
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#8B949E] leading-relaxed">
+                      Streams 100% real CT anatomy from your local <code className="text-[#3B82F6]">D:\MerilView_Data</code> to Netlify via Cloudflare Tunnel. Run <code className="text-[#3B82F6]">Start_Cloudflare_Tunnel.bat</code>.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Share URL text panel */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider select-none">Secure Share Link</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider select-none">
+                    Secure Share Link ({hostMode === 'cloud' ? 'Netlify + Cloudflare' : hostMode})
+                  </label>
+                  {study && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const studyUid = study.studyInstanceUid || study.study_instance_uid;
+                        const cleanCf = cloudflareUrl.trim().replace(/\/+$/, '');
+                        const directUrl = `${defaultCloudUrl}/#/viewer/${encodeURIComponent(studyUid)}${cleanCf ? `?apiHost=${encodeURIComponent(cleanCf)}` : ''}`;
+                        try {
+                          await navigator.clipboard.writeText(directUrl);
+                          showToast('Direct Study Link Copied');
+                        } catch (_) {
+                          copyTextFallback(directUrl);
+                          showToast('Direct Study Link Copied');
+                        }
+                      }}
+                      className="text-[10px] text-[#3B82F6] hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                    >
+                      <Link className="w-3 h-3" /> Copy Direct Viewer Link
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-1.5 items-center">
                   <input
                     type="text"

@@ -294,7 +294,8 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
         try {
           const baseUrl = API_BASE_URL || SHARE_API_BASE_URL || window.location.origin;
           const res = await fetch(`${baseUrl}${path}`);
-          if (res.ok) {
+          const cType = res.headers.get('content-type') || '';
+          if (res.ok && !cType.includes('text/html')) {
             return await res.json();
           }
         } catch (err) {

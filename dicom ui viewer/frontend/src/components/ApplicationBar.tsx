@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Bell, Settings, ChevronRight, X, Menu, FolderClosed } from 'lucide-react';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, getSavedApiHost, setApiHost } from '../config';
 import logo from '../logo.png';
 
 interface ApplicationBarProps {
@@ -84,6 +84,10 @@ export default function ApplicationBar({
 
   // Custom UI Modals
   const [activeModal, setActiveModal] = useState<'about' | 'shortcuts' | null>(null);
+  const [showCloudflareModal, setShowCloudflareModal] = useState<boolean>(false);
+  const [tunnelInput, setTunnelInput] = useState<string>(() => getSavedApiHost());
+  const [tunnelTesting, setTunnelTesting] = useState<boolean>(false);
+  const [tunnelStatus, setTunnelStatus] = useState<string | null>(null);
 
   // Toggle states for PACS, plugins, and reconstructions
   const [pacsServerStatus, setPacsServerStatus] = useState(true);
@@ -245,9 +249,9 @@ export default function ApplicationBar({
         { label: 'Local C-FIND SCP', icon: '🖥', onClick: () => alert('Local C-FIND SCP') },
         { label: 'Local C-MOVE SCP', icon: '🖥', onClick: () => alert('Local C-MOVE SCP') },
         { type: 'separator' as const },
-        { label: 'PACS Configuration...', icon: '⚙', onClick: () => alert('PACS Config') },
-        { label: 'DICOM Network Settings...', icon: '🌍', onClick: () => alert('DICOM Network Settings') },
-        { label: 'Connection Test', icon: '🧪', onClick: () => alert('PACS Connection Test') },
+        { label: 'PACS Configuration...', icon: '⚙', onClick: () => setShowCloudflareModal(true) },
+        { label: 'Cloudflare Tunnel Connection...', icon: '☁', onClick: () => setShowCloudflareModal(true) },
+        { label: 'Connection Test...', icon: '🧪', onClick: () => setShowCloudflareModal(true) },
       ] as MenuItem[]
     },
     {
@@ -925,6 +929,20 @@ export default function ApplicationBar({
           )}
         </div>
 
+        {/* Cloudflare Tunnel Status / Connect Pill */}
+        <button
+          type="button"
+          onClick={() => {
+            setTunnelInput(getSavedApiHost());
+            setShowCloudflareModal(true);
+          }}
+          title="Cloudflare Tunnel API Backend (Click to configure or test)"
+          className="flex items-center gap-1.5 h-[22px] px-2 text-[11px] font-mono rounded-[3px] bg-[#1E293B] border border-[#334155] text-[#93C5FD] hover:bg-[#2563EB] hover:text-white transition-colors cursor-pointer no-drag-region mr-1"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span>Cloudflare</span>
+        </button>
+
         {/* Notifications */}
         <button 
           title="Notifications"
@@ -1137,6 +1155,99 @@ export default function ApplicationBar({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLOUDFLARE TUNNEL CONFIGURATION MODAL */}
+      {showCloudflareModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-[2px] pointer-events-auto">
+          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-[480px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150 p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-[#353C48] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold text-white uppercase tracking-wider">Cloudflare Tunnel Connection</span>
+              </div>
+              <button 
+                onClick={() => setShowCloudflareModal(false)}
+                className="text-[#8B949E] hover:text-white transition-colors cursor-pointer outline-none"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[12px] text-[#8B949E] leading-relaxed">
+              MerilView is hosted on <strong className="text-white">Netlify</strong> and streams DICOM datasets directly from your local <strong className="text-white">D:\MerilView_Data</strong> partition over a secure <strong className="text-white">Cloudflare Tunnel</strong>.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold text-[#8B949E] uppercase tracking-wider">Cloudflare Tunnel URL</label>
+              <input
+                type="text"
+                value={tunnelInput}
+                onChange={(e) => {
+                  setTunnelInput(e.target.value);
+                  setTunnelStatus(null);
+                }}
+                placeholder="e.g. https://your-tunnel.trycloudflare.com or https://dicom.yourdomain.com"
+                className="w-full bg-[#14171C] border border-[#252B34] rounded-[4px] px-3 py-2 text-[12px] text-white font-mono outline-none focus:border-[#3B82F6]"
+              />
+            </div>
+
+            {tunnelStatus && (
+              <div className={`p-2.5 rounded-[4px] text-[11px] font-medium ${
+                tunnelStatus.startsWith('success:') ? 'bg-emerald-950/60 border border-emerald-600/50 text-emerald-300' : 'bg-red-950/60 border border-red-600/50 text-red-300'
+              }`}>
+                {tunnelStatus.replace(/^[^:]+:\s*/, '')}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-[#353C48]">
+              <button
+                type="button"
+                disabled={tunnelTesting}
+                onClick={async () => {
+                  setTunnelTesting(true);
+                  setTunnelStatus(null);
+                  try {
+                    const clean = tunnelInput.trim().replace(/\/+$/, '');
+                    if (!clean) throw new Error('Please enter a Cloudflare Tunnel URL');
+                    const res = await fetch(`${clean}/api/health`, { method: 'GET' });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: Backend returned error`);
+                    const data = await res.json();
+                    setTunnelStatus(`success: Connected! PACS status: ${data.status || 'OK'}, Studies: ${data.studies_count || 'available'}`);
+                  } catch (e: any) {
+                    setTunnelStatus(`error: Could not reach backend: ${e.message}`);
+                  } finally {
+                    setTunnelTesting(false);
+                  }
+                }}
+                className="px-3 py-1.5 bg-[#252B34] border border-[#353C48] text-[11px] text-[#C9D1D9] hover:bg-[#2C333E] rounded font-medium cursor-pointer transition-colors"
+              >
+                {tunnelTesting ? 'Testing...' : 'Test Connection'}
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCloudflareModal(false)}
+                  className="px-3 py-1.5 bg-transparent border border-[#353C48] text-[11px] text-[#8B949E] hover:text-white rounded cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clean = tunnelInput.trim().replace(/\/+$/, '');
+                    setApiHost(clean);
+                    setShowCloudflareModal(false);
+                    window.location.reload();
+                  }}
+                  className="px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[11px] font-semibold rounded cursor-pointer transition-colors"
+                >
+                  Save & Connect
+                </button>
               </div>
             </div>
           </div>

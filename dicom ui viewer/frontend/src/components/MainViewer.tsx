@@ -104,7 +104,7 @@ export default function MainViewer({
   // If the currently viewed series has multiple slices, use it; otherwise auto-promote to the main volumetric CT series
   const chosenSeries = (activeSeriesObj && getSeriesCount(activeSeriesObj) > 1)
     ? activeSeriesObj
-    : (activeSeriesObj || sortedVolumetric[0]);
+    : (sortedVolumetric[0] || activeSeriesObj);
 
   const mprSeriesUid: string | undefined =
     chosenSeries

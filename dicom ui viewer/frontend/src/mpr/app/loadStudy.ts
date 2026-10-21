@@ -193,29 +193,43 @@ export async function loadStudyFromPacs(
   }
 
   try {
-    // If caller provided a series UID, verify it belongs to this study
+    // If caller provided a series UID, verify it belongs to this study and is volumetric (>1 instance)
     if (targetSeriesUid) {
-    try {
-      const seriesList = await fetchJsonWithRetry(
-        `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
-      );
-      const list = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
-      if (list.length > 0) {
-        const found = list.some(
-          (x: any) => (x.series_instance_uid || x.seriesInstanceUid) === targetSeriesUid,
+      try {
+        const seriesList = await fetchJsonWithRetry(
+          `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
         );
-        if (!found) {
-          console.warn(
-            `[MPR] Series ${targetSeriesUid} does not belong to study ${studyUid}. ` +
-              'Auto-selecting optimal series from this study instead.',
+        const list = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
+        if (list.length > 0) {
+          const matched = list.find(
+            (x: any) => (x.series_instance_uid || x.seriesInstanceUid) === targetSeriesUid,
           );
-          targetSeriesUid = undefined;
+          const count = matched
+            ? Number(
+                matched.number_of_series_related_instances ||
+                  matched.numberOfSeriesRelatedInstances ||
+                  matched.num_instances ||
+                  0,
+              )
+            : 0;
+          if (!matched) {
+            console.warn(
+              `[MPR] Series ${targetSeriesUid} does not belong to study ${studyUid}. ` +
+                'Auto-selecting optimal series from this study instead.',
+            );
+            targetSeriesUid = undefined;
+          } else if (count <= 1) {
+            console.warn(
+              `[MPR] Series ${targetSeriesUid} has only ${count} instance(s). ` +
+                'Auto-selecting volumetric series from this study instead.',
+            );
+            targetSeriesUid = undefined;
+          }
         }
+      } catch (err) {
+        console.warn('[MPR] Could not verify series membership; continuing.', err);
       }
-    } catch (err) {
-      console.warn('[MPR] Could not verify series membership; continuing.', err);
     }
-  }
 
   // 1. Discover target series if not provided or if invalid
   if (!targetSeriesUid) {

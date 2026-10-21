@@ -653,30 +653,47 @@ export default function Viewport({
         } else {
           meta.pixelSpacing = [1.0, 1.0];
         }
-        if (inst.rows) meta.rows = inst.rows;
+        if (inst.rows) meta.rows = Number(inst.rows ?? inst.Rows);
+        if (inst.columns || inst.Columns) meta.columns = Number(inst.columns ?? inst.Columns);
+        const isColor = (inst.samples_per_pixel === 3 || inst.samplesPerPixel === 3 ||
+          (inst.photometric_interpretation || inst.photometricInterpretation) === 'RGB');
+
         const modality = inst.modality || inst.Modality || 'CT';
         meta.modality = modality;
         const isCT = modality.toUpperCase() === 'CT';
-        if (inst.window_center !== undefined || inst.windowCenter !== undefined) {
-          meta.windowCenter = inst.window_center ?? inst.windowCenter;
-        } else {
-          meta.windowCenter = isCT ? 40 : 400;
-        }
-        if (inst.window_width !== undefined || inst.windowWidth !== undefined) {
-          meta.windowWidth = inst.window_width ?? inst.windowWidth;
-        } else {
-          meta.windowWidth = isCT ? 400 : 800;
-        }
 
-        if (inst.rescale_intercept !== undefined || inst.rescaleIntercept !== undefined) {
-          meta.rescaleIntercept = Number(inst.rescale_intercept ?? inst.rescaleIntercept);
-        } else {
-          meta.rescaleIntercept = isCT ? -1024 : 0;
-        }
-        if (inst.rescale_slope !== undefined || inst.rescaleSlope !== undefined) {
-          meta.rescaleSlope = Number(inst.rescale_slope ?? inst.rescaleSlope);
-        } else {
+        if (isColor) {
+          meta.samplesPerPixel = 3;
+          meta.photometricInterpretation = 'RGB';
+          meta.bitsAllocated = Number(inst.bits_allocated ?? inst.bitsAllocated ?? 8);
+          meta.bitsStored = Number(inst.bits_stored ?? inst.bitsStored ?? 8);
+          meta.highBit = Number(inst.high_bit ?? inst.highBit ?? 7);
+          meta.windowCenter = 128;
+          meta.windowWidth = 256;
+          meta.rescaleIntercept = 0;
           meta.rescaleSlope = 1;
+        } else {
+          if (inst.window_center !== undefined || inst.windowCenter !== undefined) {
+            meta.windowCenter = inst.window_center ?? inst.windowCenter;
+          } else {
+            meta.windowCenter = isCT ? 40 : 400;
+          }
+          if (inst.window_width !== undefined || inst.windowWidth !== undefined) {
+            meta.windowWidth = inst.window_width ?? inst.windowWidth;
+          } else {
+            meta.windowWidth = isCT ? 400 : 800;
+          }
+
+          if (inst.rescale_intercept !== undefined || inst.rescaleIntercept !== undefined) {
+            meta.rescaleIntercept = Number(inst.rescale_intercept ?? inst.rescaleIntercept);
+          } else {
+            meta.rescaleIntercept = isCT ? -1024 : 0;
+          }
+          if (inst.rescale_slope !== undefined || inst.rescaleSlope !== undefined) {
+            meta.rescaleSlope = Number(inst.rescale_slope ?? inst.rescaleSlope);
+          } else {
+            meta.rescaleSlope = 1;
+          }
         }
         meta.sliceIndex = idx;
         meta.sliceCount = instancesList.length;
@@ -1074,13 +1091,18 @@ export default function Viewport({
   const lastStatsJsonRef = useRef<string>('');
   useEffect(() => {
     if (active && onStatsChange && !isEmpty) {
+      const activeInst = instancesList[currentSlice - 1];
+      const instRows = activeInst?.rows || activeInst?.Rows;
+      const instCols = activeInst?.columns || activeInst?.Columns;
+      const dynamicResolution = (instRows && instCols) ? `${instCols} × ${instRows}` : (baseData.resolution || '512 × 512');
+
       const statsPayload = {
         imageIndex: currentSlice,
         totalImages: totalImages,
         zoom: `${Math.round(zoom * 100)}%`,
         windowWidth: Math.round(windowWidth),
         windowLevel: Math.round(windowLevel),
-        resolution: baseData.resolution || '512 × 512',
+        resolution: dynamicResolution,
         spacing: baseData.spacing || '0.68 mm',
         plane: baseData.plane,
         seriesNumber: seriesNum,
@@ -1093,7 +1115,7 @@ export default function Viewport({
         onStatsChange(statsPayload);
       }
     }
-  }, [active, currentSlice, zoom, windowWidth, windowLevel, totalImages, onStatsChange, seriesNum, studyDesc, currentSeriesId, isEmpty]);
+  }, [active, currentSlice, zoom, windowWidth, windowLevel, totalImages, onStatsChange, seriesNum, studyDesc, currentSeriesId, isEmpty, instancesList, baseData]);
 
   // Cine Loop controller
   useEffect(() => {
@@ -1356,8 +1378,14 @@ export default function Viewport({
   };
 
 
+  const currentInst = instancesList[currentSlice - 1];
+  const overlayRows = currentInst?.rows || currentInst?.Rows;
+  const overlayCols = currentInst?.columns || currentInst?.Columns;
+  const overlayResolution = (overlayRows && overlayCols) ? `${overlayCols} × ${overlayRows}` : (baseData.resolution || '512 × 512');
+
   const overlayData = {
     ...baseData,
+    resolution: overlayResolution,
     seriesNumber: seriesNum,
     studyDescription: studyDesc || baseData.studyDescription,
     imageNumber: currentSlice,

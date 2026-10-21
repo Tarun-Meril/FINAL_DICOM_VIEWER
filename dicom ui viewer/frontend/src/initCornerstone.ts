@@ -150,11 +150,15 @@ function customMetaDataProvider(type: string, imageId: string): any {
 
   // ── imagePixelModule ────────────────────────────────────────────────────────
   if (type === 'imagePixelModule') {
-    const bitsAllocated = Number(data.bits_allocated || data.bitsAllocated || 16);
-    const bitsStored = Number(data.bits_stored || data.bitsStored || 16);
-    const highBit = Number(data.high_bit || data.highBit || bitsStored - 1);
-    const samplesPerPixel = Number(data.samples_per_pixel || data.samplesPerPixel || 1);
-    const photometric = data.photometric_interpretation || data.photometricInterpretation || 'MONOCHROME2';
+    const isColor = (
+      Number(data.samples_per_pixel || data.samplesPerPixel) === 3 ||
+      (data.photometric_interpretation || data.photometricInterpretation) === 'RGB'
+    );
+    const bitsAllocated = Number(data.bits_allocated || data.bitsAllocated || (isColor ? 8 : 16));
+    const bitsStored = Number(data.bits_stored || data.bitsStored || (isColor ? 8 : 16));
+    const highBit = Number(data.high_bit || data.highBit || (isColor ? 7 : bitsStored - 1));
+    const samplesPerPixel = isColor ? 3 : Number(data.samples_per_pixel || data.samplesPerPixel || 1);
+    const photometric = isColor ? 'RGB' : (data.photometric_interpretation || data.photometricInterpretation || 'MONOCHROME2');
     const pixelRep = Number(data.pixel_representation ?? data.pixelRepresentation ?? 0);
 
     return {
@@ -171,6 +175,17 @@ function customMetaDataProvider(type: string, imageId: string): any {
 
   // ── modalityLUTModule ───────────────────────────────────────────────────────
   if (type === 'modalityLUTModule' || type === 'modalityLutModule') {
+    const isColor = (
+      Number(data.samples_per_pixel || data.samplesPerPixel) === 3 ||
+      (data.photometric_interpretation || data.photometricInterpretation) === 'RGB'
+    );
+    if (isColor) {
+      return {
+        rescaleIntercept: 0,
+        rescaleSlope: 1,
+        rescaleType: 'US',
+      };
+    }
     const modality = data.modality || data.Modality || 'CT';
     const intercept = parseNumeric(data.rescaleIntercept ?? data.rescale_intercept, modality === 'CT' ? -1024 : 0);
     const slope = parseNumeric(data.rescaleSlope ?? data.rescale_slope, 1);
@@ -183,6 +198,16 @@ function customMetaDataProvider(type: string, imageId: string): any {
 
   // ── voiLutModule ─────────────────────────────────────────────────────────────
   if (type === 'voiLutModule' || type === 'voiLUTModule') {
+    const isColor = (
+      Number(data.samples_per_pixel || data.samplesPerPixel) === 3 ||
+      (data.photometric_interpretation || data.photometricInterpretation) === 'RGB'
+    );
+    if (isColor) {
+      return {
+        windowCenter: [128],
+        windowWidth: [256],
+      };
+    }
     const modality = data.modality || data.Modality || 'MR';
     const defaultWC = modality === 'CT' ? 40 : 400;
     const defaultWW = modality === 'CT' ? 400 : 800;

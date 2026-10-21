@@ -59,19 +59,40 @@ export function getMetadataFromStore(type: string, imageId: string): any {
   }
 
   if (type === 'imagePixelModule') {
+    const isColor = (
+      data?.samplesPerPixel === 3 || data?.samples_per_pixel === 3 ||
+      data?.photometricInterpretation === 'RGB' || data?.photometric_interpretation === 'RGB'
+    );
+    const bitsAllocated = Number(data?.bitsAllocated ?? data?.bits_allocated ?? (isColor ? 8 : 16));
+    const bitsStored = Number(data?.bitsStored ?? data?.bits_stored ?? (isColor ? 8 : 16));
+    const highBit = Number(data?.highBit ?? data?.high_bit ?? (isColor ? 7 : 15));
+    const samplesPerPixel = isColor ? 3 : Number(data?.samplesPerPixel ?? data?.samples_per_pixel ?? 1);
+    const photometricInterpretation = isColor ? 'RGB' : (data?.photometricInterpretation || data?.photometric_interpretation || 'MONOCHROME2');
+
     return {
-      pixelRepresentation: data?.pixelRepresentation ?? 0,
-      bitsAllocated: data?.bitsAllocated ?? 16,
-      bitsStored: data?.bitsStored ?? 16,
-      highBit: data?.highBit ?? 15,
-      samplesPerPixel: data?.samplesPerPixel ?? 1,
-      photometricInterpretation: data?.photometricInterpretation || 'MONOCHROME2',
-      rows: Number(data?.rows || 512),
-      columns: Number(data?.columns || 512),
+      pixelRepresentation: data?.pixelRepresentation ?? data?.pixel_representation ?? 0,
+      bitsAllocated,
+      bitsStored,
+      highBit,
+      samplesPerPixel,
+      photometricInterpretation,
+      rows: Number(data?.rows || data?.Rows || 512),
+      columns: Number(data?.columns || data?.Columns || 512),
     };
   }
 
   if (type === 'modalityLUTModule' || type === 'modalityLutModule') {
+    const isColor = (
+      data?.samplesPerPixel === 3 || data?.samples_per_pixel === 3 ||
+      data?.photometricInterpretation === 'RGB' || data?.photometric_interpretation === 'RGB'
+    );
+    if (isColor) {
+      return {
+        rescaleIntercept: 0,
+        rescaleSlope: 1,
+        rescaleType: 'US',
+      };
+    }
     const modality = data?.modality || data?.Modality || 'CT';
     const defaultIntercept = modality === 'CT' ? -1024 : 0;
     return {
@@ -82,6 +103,16 @@ export function getMetadataFromStore(type: string, imageId: string): any {
   }
 
   if (type === 'voiLutModule' || type === 'voiLUTModule') {
+    const isColor = (
+      data?.samplesPerPixel === 3 || data?.samples_per_pixel === 3 ||
+      data?.photometricInterpretation === 'RGB' || data?.photometric_interpretation === 'RGB'
+    );
+    if (isColor) {
+      return {
+        windowCenter: [128],
+        windowWidth: [256],
+      };
+    }
     const rawWc = data.windowCenter !== undefined ? data.windowCenter : data.window_center;
     const rawWw = data.windowWidth !== undefined ? data.windowWidth : data.window_width;
     const modality = data?.modality || data?.Modality || 'CT';

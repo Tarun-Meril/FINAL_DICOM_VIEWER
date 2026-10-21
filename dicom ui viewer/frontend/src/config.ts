@@ -13,14 +13,15 @@ export const getDynamicApiBaseUrl = (): string => {
       const cleanHost = apiHost.replace(/\/+$/, '');
       try {
         localStorage.setItem('merilview_api_host', cleanHost);
+        localStorage.setItem('merilview_cloudflare_tunnel_url', cleanHost);
       } catch (e) {}
       return cleanHost;
     }
 
     // Check previously saved host from localStorage
     try {
-      const savedHost = localStorage.getItem('merilview_api_host');
-      if (savedHost) return savedHost;
+      const savedHost = localStorage.getItem('merilview_api_host') || localStorage.getItem('merilview_cloudflare_tunnel_url');
+      if (savedHost) return savedHost.replace(/\/+$/, '');
     } catch (e) {}
 
     const hostname = window.location.hostname;
@@ -43,10 +44,33 @@ export const getDynamicApiBaseUrl = (): string => {
       if (isIpOrLocal) {
         return `${protocol}//${hostname}:3001`;
       }
-      return import.meta.env.VITE_API_BASE_URL || window.location.origin;
+      return (
+        import.meta.env.VITE_CLOUDFLARE_TUNNEL_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        window.location.origin
+      ).replace(/\/+$/, '');
     }
   }
-  return (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '');
+  return (
+    import.meta.env.VITE_CLOUDFLARE_TUNNEL_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    'http://127.0.0.1:3001'
+  ).replace(/\/+$/, '');
 };
 
 export const API_BASE_URL = getDynamicApiBaseUrl();
+
+export function setApiHost(host: string): void {
+  if (typeof localStorage !== 'undefined' && host) {
+    const clean = host.trim().replace(/\/+$/, '');
+    localStorage.setItem('merilview_api_host', clean);
+    localStorage.setItem('merilview_cloudflare_tunnel_url', clean);
+  }
+}
+
+export function getSavedApiHost(): string {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem('merilview_api_host') || localStorage.getItem('merilview_cloudflare_tunnel_url') || '';
+  }
+  return '';
+}
