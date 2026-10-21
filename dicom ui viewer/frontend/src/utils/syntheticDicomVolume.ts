@@ -418,14 +418,23 @@ export function createSyntheticDicomSliceBuffer(opts: SyntheticSliceOptions): Ar
   const metaLen = offset - metaStart;
   view.setUint32(metaGroupLenPos + 8, metaLen, true);
 
-  // 4. Main Dataset Elements
+  // 4. Main Dataset Elements (in strict ascending DICOM tag order)
+  // Group 0008
   writeStr(0x0008, 0x0016, 'UI', '1.2.840.10008.5.1.4.1.1.2'); // SOP Class UID
   writeStr(0x0008, 0x0018, 'UI', sopUid); // SOP Instance UID
   writeStr(0x0008, 0x0060, 'CS', 'CT'); // Modality
   writeStr(0x0008, 0x1030, 'LO', studyDescription); // Study Description
   writeStr(0x0008, 0x103E, 'LO', seriesDescription); // Series Description
+
+  // Group 0010
   writeStr(0x0010, 0x0010, 'PN', patientName);
   writeStr(0x0010, 0x0020, 'LO', patientId);
+
+  // Group 0018
+  writeStr(0x0018, 0x0050, 'DS', String(sliceThickness));
+  writeStr(0x0018, 0x0088, 'DS', String(sliceThickness));
+
+  // Group 0020
   writeStr(0x0020, 0x000D, 'UI', studyUid);
   writeStr(0x0020, 0x000E, 'UI', seriesUid);
   writeStr(0x0020, 0x0011, 'IS', String(seriesNumber));
@@ -433,13 +442,13 @@ export function createSyntheticDicomSliceBuffer(opts: SyntheticSliceOptions): Ar
   writeStr(0x0020, 0x0032, 'DS', `0.00\\0.00\\${sliceZ.toFixed(2)}`); // Image Position Patient
   writeStr(0x0020, 0x0037, 'DS', '1.00\\0.00\\0.00\\0.00\\1.00\\0.00'); // Image Orientation Patient
   writeStr(0x0020, 0x0052, 'UI', `${studyUid}.frame`); // Frame of Reference UID
-  writeStr(0x0028, 0x0004, 'CS', 'MONOCHROME2');
+
+  // Group 0028
   writeU16(0x0028, 0x0002, 'US', 1); // Samples per Pixel
+  writeStr(0x0028, 0x0004, 'CS', 'MONOCHROME2');
   writeU16(0x0028, 0x0010, 'US', rows);
   writeU16(0x0028, 0x0011, 'US', columns);
   writeStr(0x0028, 0x0030, 'DS', pixelSpacing);
-  writeStr(0x0018, 0x0050, 'DS', String(sliceThickness));
-  writeStr(0x0018, 0x0088, 'DS', String(sliceThickness));
   writeU16(0x0028, 0x0100, 'US', 16); // Bits Allocated
   writeU16(0x0028, 0x0101, 'US', 16); // Bits Stored
   writeU16(0x0028, 0x0102, 'US', 15); // High Bit

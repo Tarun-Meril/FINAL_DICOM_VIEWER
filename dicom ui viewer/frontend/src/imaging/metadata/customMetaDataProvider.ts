@@ -71,27 +71,38 @@ export function getMetadataFromStore(type: string, imageId: string): any {
     };
   }
 
-  if (type === 'modalityLUTModule') {
+  if (type === 'modalityLUTModule' || type === 'modalityLutModule') {
+    const modality = data?.modality || data?.Modality || 'CT';
+    const defaultIntercept = modality === 'CT' ? -1024 : 0;
     return {
-      rescaleIntercept: Number(data?.rescaleIntercept ?? data?.rescale_intercept ?? 0),
+      rescaleIntercept: Number(data?.rescaleIntercept ?? data?.rescale_intercept ?? defaultIntercept),
       rescaleSlope: Number(data?.rescaleSlope ?? data?.rescale_slope ?? 1),
+      rescaleType: modality === 'CT' ? 'HU' : 'US',
     };
   }
 
-  if (type === 'voiLutModule') {
+  if (type === 'voiLutModule' || type === 'voiLUTModule') {
     const rawWc = data.windowCenter !== undefined ? data.windowCenter : data.window_center;
     const rawWw = data.windowWidth !== undefined ? data.windowWidth : data.window_width;
-    if (rawWc !== undefined && rawWw !== undefined) {
-      const wc = Number(Array.isArray(rawWc) ? rawWc[0] : rawWc);
-      const ww = Number(Array.isArray(rawWw) ? rawWw[0] : rawWw);
-      if (!isNaN(wc) && !isNaN(ww) && ww > 0) {
-        return {
-          windowCenter: [wc],
-          windowWidth: [ww],
-        };
-      }
+    const modality = data?.modality || data?.Modality || 'CT';
+    const defaultWC = modality === 'CT' ? 40 : 400;
+    const defaultWW = modality === 'CT' ? 400 : 800;
+
+    let wc = defaultWC;
+    let ww = defaultWW;
+    if (rawWc !== undefined) {
+      const parsedWc = Number(Array.isArray(rawWc) ? rawWc[0] : rawWc);
+      if (!isNaN(parsedWc)) wc = parsedWc;
     }
-    return undefined;
+    if (rawWw !== undefined) {
+      const parsedWw = Number(Array.isArray(rawWw) ? rawWw[0] : rawWw);
+      if (!isNaN(parsedWw) && parsedWw > 0) ww = parsedWw;
+    }
+
+    return {
+      windowCenter: [wc],
+      windowWidth: [ww],
+    };
   }
 
   if (type === 'generalSeriesModule') {

@@ -31,6 +31,24 @@ const upload = multer({ dest: tempDir });
 // Health Diagnostic Route
 router.get('/health', HealthController.checkHealth);
 
+// System & Network Diagnostics for Local Sharing
+router.get('/system/network-info', (req, res) => {
+  const nets = os.networkInterfaces();
+  const ips: string[] = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ips.push(net.address);
+      }
+    }
+  }
+  res.json({
+    primaryIp: ips[0] || '127.0.0.1',
+    allIps: ips,
+    port: 3001,
+  });
+});
+
 // Backup & Disaster Recovery Administration Routes
 router.get('/admin/backup', BackupController.exportBackup);
 router.post('/admin/restore', BackupController.restoreBackup);

@@ -16,15 +16,32 @@ const frames = new Map<string, FrameDescriptor>();
 const studyInfo = new Map<string, PatientStudyInfo>();
 
 export function registerFrames(list: readonly FrameDescriptor[]): void {
-  for (const f of list) frames.set(f.id, f);
+  for (const f of list) {
+    frames.set(f.id, f);
+    if (!f.id.startsWith('cornerstoneStreamingImageVolume:')) {
+      frames.set(`cornerstoneStreamingImageVolume:${f.id}`, f);
+    }
+  }
 }
 
 export function registerStudyInfo(imageId: string, info: PatientStudyInfo): void {
   studyInfo.set(imageId, info);
+  if (!imageId.startsWith('cornerstoneStreamingImageVolume:')) {
+    studyInfo.set(`cornerstoneStreamingImageVolume:${imageId}`, info);
+  }
 }
 
 export function getFrame(imageId: string): FrameDescriptor | undefined {
-  return frames.get(imageId);
+  if (!imageId) return undefined;
+  let f = frames.get(imageId);
+  if (!f) {
+    const stripped = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+    f = frames.get(stripped);
+  }
+  if (!f && imageId.includes('?')) {
+    f = frames.get(imageId.split('?')[0]);
+  }
+  return f;
 }
 
 export function clearRegistry(): void {
@@ -33,7 +50,15 @@ export function clearRegistry(): void {
 }
 
 export function mprMetadataProvider(type: string, imageId: string): unknown {
-  const f = frames.get(imageId);
+  if (!imageId) return undefined;
+  let f = frames.get(imageId);
+  if (!f) {
+    const stripped = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+    f = frames.get(stripped);
+  }
+  if (!f && imageId.includes('?')) {
+    f = frames.get(imageId.split('?')[0]);
+  }
   if (!f) return undefined;
 
   switch (type) {
@@ -84,16 +109,18 @@ export function mprMetadataProvider(type: string, imageId: string): unknown {
       };
 
     case 'modalityLutModule':
+    case 'modalityLUTModule':
       return {
         rescaleSlope: f.rescaleSlope ?? 1,
-        rescaleIntercept: f.rescaleIntercept ?? 0,
+        rescaleIntercept: f.rescaleIntercept ?? (f.modality === 'CT' ? -1024 : 0),
         rescaleType: f.modality === 'CT' ? 'HU' : 'US',
       };
 
     case 'voiLutModule':
+    case 'voiLUTModule':
       return {
-        windowCenter: f.windowCenter !== undefined ? [f.windowCenter] : [],
-        windowWidth: f.windowWidth !== undefined ? [f.windowWidth] : [],
+        windowCenter: f.windowCenter !== undefined ? [f.windowCenter] : [40],
+        windowWidth: f.windowWidth !== undefined ? [f.windowWidth] : [400],
       };
 
     case 'generalSeriesModule':
@@ -120,7 +147,8 @@ export function mprMetadataProvider(type: string, imageId: string): unknown {
       };
 
     case 'patientStudyModule': {
-      const info = studyInfo.get(imageId);
+      const stripped = imageId.replace(/^cornerstoneStreamingImageVolume:/, '');
+      const info = studyInfo.get(imageId) || studyInfo.get(stripped);
       return info
         ? {
             patientName: info.patientName,

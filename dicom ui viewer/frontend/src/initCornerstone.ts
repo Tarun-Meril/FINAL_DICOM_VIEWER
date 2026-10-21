@@ -28,6 +28,7 @@ import DecodeWorker from '../node_modules/@cornerstonejs/dicom-image-loader/dist
 import { parseDataSet } from './vr/dicom/parser';
 import { decodeFrame } from './vr/dicom/decode/decodeFrame';
 import { T } from './vr/dicom/dictionary';
+import { computeAnatomicalVoxelHU } from './utils/syntheticDicomVolume';
 
 if (typeof window !== 'undefined') {
   (window as any).cornerstone = cornerstoneCore;
@@ -169,16 +170,19 @@ function customMetaDataProvider(type: string, imageId: string): any {
   }
 
   // ── modalityLUTModule ───────────────────────────────────────────────────────
-  if (type === 'modalityLUTModule') {
+  if (type === 'modalityLUTModule' || type === 'modalityLutModule') {
+    const modality = data.modality || data.Modality || 'CT';
+    const intercept = parseNumeric(data.rescaleIntercept ?? data.rescale_intercept, modality === 'CT' ? -1024 : 0);
+    const slope = parseNumeric(data.rescaleSlope ?? data.rescale_slope, 1);
     return {
-      rescaleIntercept: Number(data.rescaleIntercept ?? data.rescale_intercept ?? 0),
-      rescaleSlope: Number(data.rescaleSlope ?? data.rescale_slope ?? 1),
-      rescaleType: (data.modality || data.Modality) === 'CT' ? 'HU' : 'US',
+      rescaleIntercept: intercept,
+      rescaleSlope: slope,
+      rescaleType: modality === 'CT' ? 'HU' : 'US',
     };
   }
 
   // ── voiLutModule ─────────────────────────────────────────────────────────────
-  if (type === 'voiLutModule') {
+  if (type === 'voiLutModule' || type === 'voiLUTModule') {
     const modality = data.modality || data.Modality || 'MR';
     const defaultWC = modality === 'CT' ? 40 : 400;
     const defaultWW = modality === 'CT' ? 400 : 800;
@@ -247,19 +251,13 @@ function generateProceduralCTFrame(
   wc: number,
   ww: number,
   intercept: number,
-  slope: number
+  slope: number,
+  plane: string = 'Axial',
+  sliceIndex: number = 0,
+  sliceCount: number = 100
 ): { pixels16: Uint16Array; minPixelValue: number; maxPixelValue: number } {
   const pixels16 = new Uint16Array(width * height);
-  let hash = 0;
-  for (let i = 0; i < sopUid.length; i++) {
-    hash = ((hash << 5) - hash + sopUid.charCodeAt(i)) | 0;
-  }
-  const sliceRatio = Math.abs((hash % 100) / 100.0);
-
-  const cx = width / 2;
-  const cy = height / 2;
-  const rx = width * 0.38;
-  const ry = height * 0.44;
+  const tz = sliceCount > 1 ? Math.max(0, Math.min(1, sliceIndex / (sliceCount - 1))) : 0.5;
 
   let minPixelValue = 65535;
   let maxPixelValue = 0;
@@ -267,36 +265,22 @@ function generateProceduralCTFrame(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
-      const dx = (x - cx) / rx;
-      const dy = (y - cy) / ry;
-      const dist = Math.hypot(dx, dy);
-
       let hu = -1000;
 
-      if (dist < 1.05 && dist >= 0.98) {
-        hu = -70 + (Math.sin(x * 0.1) * 10);
-      } else if (dist < 0.98 && dist >= 0.88) {
-        hu = 950 + ((x + y) % 50);
-      } else if (dist < 0.88) {
-        const baseParenchyma = 35 + ((Math.sin(dx * 8) * Math.cos(dy * 8)) * 3);
-
-        const vdxLeft = (x - (cx - rx * 0.22)) / (rx * 0.14);
-        const vdxRight = (x - (cx + rx * 0.22)) / (rx * 0.14);
-        const vdy = (y - (cy - ry * 0.05 + (sliceRatio - 0.5) * ry * 0.3)) / (ry * 0.35);
-
-        const vDistL = Math.hypot(vdxLeft, vdy);
-        const vDistR = Math.hypot(vdxRight, vdy);
-
-        if (vDistL < 0.9 || vDistR < 0.9) {
-          hu = 10 + Math.random() * 5;
-        } else {
-          const subDist = dist / 0.88;
-          if (subDist > 0.65) {
-            hu = baseParenchyma + 5;
-          } else {
-            hu = baseParenchyma - 4;
-          }
-        }
+      if (plane === 'Axial') {
+        hu = computeAnatomicalVoxelHU(x, y, tz, width, height);
+      } else if (plane === 'Coronal') {
+        // Coronal: X is Left-Right, Y is Superior-Inferior (Superior at top, Inferior at bottom)
+        const py = tz * height;
+        const currentTz = 1.0 - (y / height);
+        hu = computeAnatomicalVoxelHU(x, py, currentTz, width, height);
+      } else if (plane === 'Sagittal') {
+        // Sagittal: X is Anterior-Posterior, Y is Superior-Inferior (Superior at top, Inferior at bottom)
+        const px = tz * width;
+        const currentTz = 1.0 - (y / height);
+        hu = computeAnatomicalVoxelHU(px, x, currentTz, width, height);
+      } else {
+        hu = computeAnatomicalVoxelHU(x, y, tz, width, height);
       }
 
       const rawStored = Math.round((hu - intercept) / (slope || 1));
@@ -580,6 +564,10 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
     const wc = parseNumeric(meta.windowCenter ?? meta.window_center, modality === 'CT' ? 40 : 400);
     const ww = parseNumeric(meta.windowWidth ?? meta.window_width, modality === 'CT' ? 400 : 800);
 
+    const sliceIndex = parseNumeric(meta.sliceIndex, 0);
+    const sliceCount = parseNumeric(meta.sliceCount, 175);
+    const plane = meta.plane || 'Axial';
+
     const { pixels16, minPixelValue, maxPixelValue } = generateProceduralCTFrame(
       width,
       height,
@@ -587,7 +575,10 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
       wc,
       ww,
       intercept,
-      slope
+      slope,
+      plane,
+      sliceIndex,
+      sliceCount
     );
 
     const fallbackCanvas = document.createElement('canvas');

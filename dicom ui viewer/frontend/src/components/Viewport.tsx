@@ -656,19 +656,32 @@ export default function Viewport({
         if (inst.rows) meta.rows = inst.rows;
         const modality = inst.modality || inst.Modality || 'CT';
         meta.modality = modality;
-        if (inst.window_center !== undefined || inst.windowCenter !== undefined) meta.windowCenter = inst.window_center ?? inst.windowCenter;
-        if (inst.window_width !== undefined || inst.windowWidth !== undefined) meta.windowWidth = inst.window_width ?? inst.windowWidth;
+        const isCT = modality.toUpperCase() === 'CT';
+        if (inst.window_center !== undefined || inst.windowCenter !== undefined) {
+          meta.windowCenter = inst.window_center ?? inst.windowCenter;
+        } else {
+          meta.windowCenter = isCT ? 40 : 400;
+        }
+        if (inst.window_width !== undefined || inst.windowWidth !== undefined) {
+          meta.windowWidth = inst.window_width ?? inst.windowWidth;
+        } else {
+          meta.windowWidth = isCT ? 400 : 800;
+        }
 
         if (inst.rescale_intercept !== undefined || inst.rescaleIntercept !== undefined) {
-          meta.rescaleIntercept = inst.rescale_intercept ?? inst.rescaleIntercept;
+          meta.rescaleIntercept = Number(inst.rescale_intercept ?? inst.rescaleIntercept);
         } else {
-          meta.rescaleIntercept = 0;
+          meta.rescaleIntercept = isCT ? -1024 : 0;
         }
         if (inst.rescale_slope !== undefined || inst.rescaleSlope !== undefined) {
-          meta.rescaleSlope = inst.rescale_slope ?? inst.rescaleSlope;
+          meta.rescaleSlope = Number(inst.rescale_slope ?? inst.rescaleSlope);
         } else {
           meta.rescaleSlope = 1;
         }
+        meta.sliceIndex = idx;
+        meta.sliceCount = instancesList.length;
+        meta.plane = baseData.plane;
+
         if (inst.photometric_interpretation || inst.photometricInterpretation) meta.photometricInterpretation = inst.photometric_interpretation || inst.photometricInterpretation;
         addInstanceMetadata(imgId, meta);
         return imgId;

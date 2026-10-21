@@ -369,8 +369,8 @@ export async function loadStudyFromPacs(
     ) || catalogSeriesList[0];
 
     const targetSliceCount = matchedSeries?.numberOfSeriesRelatedInstances
-      ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 200)
-      : 180;
+      ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 100)
+      : 80;
     const thickness = parseFloat(matchedSeries?.sliceThickness || '1.25') || 1.25;
     const finalSeriesUid = matchedSeries?.seriesInstanceUid || targetSeriesUid || seriesUid || '201';
 

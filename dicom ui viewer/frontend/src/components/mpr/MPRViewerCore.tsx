@@ -26,27 +26,16 @@ export default function MPRViewerCore({
   variant = 'embedded',
 }: MPRViewerCoreProps) {
   const activeApiBase = apiBase || API_BASE_URL;
-  // Default to native client-side WebGL Cornerstone3D reconstruction engine
+  // Always default to native client-side WebGL Cornerstone3D reconstruction engine
   const [engineMode, setEngineMode] = useState<'server' | 'webgl'>('webgl');
   const [hasWebGLError, setHasWebGLError] = useState(false);
 
-  // Monitor for global WebGL context loss to automatically failover to Server MPR
-  useEffect(() => {
-    const handleContextLost = (e: Event) => {
-      console.warn('[MPR] WebGL context loss detected globally — failing over to Server MPR engine');
-      setHasWebGLError(true);
-      setEngineMode('server');
-    };
-
-    window.addEventListener('webglcontextlost', handleContextLost, true);
-    return () => {
-      window.removeEventListener('webglcontextlost', handleContextLost, true);
-    };
-  }, []);
+  // On remote share links (e.g. Netlify), local Python FastAPI server is not present
+  const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
   return (
     <div className="merilview-mpr" style={{ width: '100%', height: '100%' }}>
-      {engineMode === 'server' && studyUID ? (
+      {engineMode === 'server' && studyUID && !isRemote ? (
         <ClinicalServerMPRView
           studyUID={studyUID}
           seriesUID={seriesUID}
