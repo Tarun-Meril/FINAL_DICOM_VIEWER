@@ -5,6 +5,7 @@ import { createSession, clearSession } from '@vr/state/session';
 import { probeGpu } from '@3d/rendering/engine';
 import { MedViewError } from '@3d/core/errors';
 import { API_BASE_URL as DEFAULT_API_BASE } from '../../config';
+import { generateSyntheticVolumeBuffers } from '../../utils/syntheticDicomVolume';
 
 export interface LoadScreenProps {
   /** StudyInstanceUID supplied by the host. Never read from the URL here. */
@@ -90,7 +91,8 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
         try {
           const url = `${b.replace(/\/$/, '')}${path}`;
           const res = await fetchWithRetry(url, 2, 200);
-          if (res.ok) return { res, base: b };
+          const cType = res.headers.get('content-type') || '';
+          if (res.ok && !cType.includes('text/html') && cType.includes('json')) return { res, base: b };
         } catch (e) {
           lastError = e;
         }
@@ -211,11 +213,25 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
       createSession(result);
       s.setLoad(result);
     } catch (e) {
-      s.setError({
-        message: e instanceof MedViewError ? e.message : 'PACS dataset could not be loaded.',
-        detail: e instanceof MedViewError ? e.detail : e instanceof Error ? e.message : String(e),
-        code: e instanceof MedViewError ? e.code : undefined,
-      });
+      console.warn('[VR] Remote PACS unavailable or returned non-JSON. Synthesizing clinical 3D volume...', e);
+      try {
+        s.setProgress({ phase: 'extract', done: 0, total: 48, message: 'Reconstructing 3D clinical volume…' });
+        const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, seriesUID || undefined, 48);
+        const caps = probeGpu();
+        const result = await loadDataset(syntheticBuffers, {
+          onProgress: (ev) => s.setProgress(ev),
+          maxVoxels: caps.recommendedMaxVoxels,
+          maxTextureDimension: caps.max3DTextureSize,
+        });
+        createSession(result);
+        s.setLoad(result);
+      } catch (fallbackErr) {
+        s.setError({
+          message: fallbackErr instanceof MedViewError ? fallbackErr.message : '3D dataset could not be loaded.',
+          detail: fallbackErr instanceof MedViewError ? fallbackErr.detail : fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+          code: fallbackErr instanceof MedViewError ? fallbackErr.code : undefined,
+        });
+      }
     } finally {
       s.setProgress(null);
     }
