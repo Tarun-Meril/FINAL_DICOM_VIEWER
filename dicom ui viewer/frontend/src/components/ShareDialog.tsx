@@ -68,7 +68,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   // Host Destination configuration
   const isRemoteDomain = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const defaultCloudUrl = (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app');
+  const defaultCloudUrl = (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://myddicom.netlify.app');
   const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.42.0.130:3001');
   const [hostMode, setHostMode] = useState<'cloud' | 'lan' | 'desktop' | 'custom'>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('merilview_share_host_mode') : null;
@@ -597,7 +597,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                       type="text"
                       value={customHost}
                       onChange={(e) => setCustomHost(e.target.value)}
-                      placeholder="e.g. https://mydicom.netlify.app or http://192.168.1.50:5174"
+                      placeholder="e.g. https://myddicom.netlify.app or http://192.168.1.50:5174"
                       className="flex-1 bg-[#1C1F26] border border-[#353C48] rounded-[4px] px-2.5 py-1 text-[11px] text-white font-mono outline-none focus:border-[#3B82F6]"
                     />
                     <button

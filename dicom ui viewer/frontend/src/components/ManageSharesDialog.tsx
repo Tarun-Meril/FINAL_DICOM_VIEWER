@@ -195,7 +195,7 @@ export default function ManageSharesDialog({ onClose, showToast }: ManageSharesD
   };
 
   const getShareUrl = (token: string) => {
-    const hostUrl = import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app';
+    const hostUrl = import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://myddicom.netlify.app';
     return `${hostUrl}/share/${token}`;
   };
 
