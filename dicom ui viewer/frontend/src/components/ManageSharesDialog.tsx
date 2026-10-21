@@ -195,14 +195,7 @@ export default function ManageSharesDialog({ onClose, showToast }: ManageSharesD
   };
 
   const getShareUrl = (token: string) => {
-    let hostUrl = import.meta.env.VITE_SHARE_BASE_URL;
-    if (!hostUrl) {
-      if (window.location.origin && window.location.origin !== 'file://' && !window.location.origin.startsWith('chrome-extension')) {
-        hostUrl = window.location.origin;
-      } else {
-        hostUrl = SHARE_API_BASE_URL.replace('3001', '3000');
-      }
-    }
+    const hostUrl = import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app';
     return `${hostUrl}/share/${token}`;
   };
 

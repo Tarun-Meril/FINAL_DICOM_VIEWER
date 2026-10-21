@@ -68,15 +68,17 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   // Host Destination configuration
   const isRemoteDomain = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const defaultCloudUrl = (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app');
   const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.42.0.130:3001');
-  const defaultCloudUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app');
-  const [hostMode, setHostMode] = useState<'lan' | 'cloud' | 'desktop' | 'custom'>(() => {
-    if (isRemoteDomain) return 'custom';
-    return (localStorage.getItem('merilview_share_host_mode') as any) || 'lan';
+  const [hostMode, setHostMode] = useState<'cloud' | 'lan' | 'desktop' | 'custom'>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('merilview_share_host_mode') : null;
+    if (saved === 'lan' || saved === 'desktop' || saved === 'custom') {
+      return saved as any;
+    }
+    return 'cloud';
   });
   const [customHost, setCustomHost] = useState<string>(() => {
-    if (isRemoteDomain) return detectedOrigin;
-    return localStorage.getItem('merilview_share_custom_host') || defaultLanUrl;
+    return (typeof localStorage !== 'undefined' ? localStorage.getItem('merilview_share_custom_host') : null) || defaultCloudUrl;
   });
   const [isEditingCustomHost, setIsEditingCustomHost] = useState<boolean>(false);
 
@@ -182,13 +184,13 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     if (mode === 'desktop') {
       return `merilview://share/${token}`;
     }
-    let base = defaultLanUrl;
-    if (mode === 'lan') {
-      base = defaultLanUrl;
-    } else if (mode === 'cloud') {
+    let base = defaultCloudUrl;
+    if (mode === 'cloud') {
       base = defaultCloudUrl;
+    } else if (mode === 'lan') {
+      base = defaultLanUrl;
     } else if (mode === 'custom') {
-      base = customUrl.trim().replace(/\/+$/, '') || defaultLanUrl;
+      base = customUrl.trim().replace(/\/+$/, '') || defaultCloudUrl;
     }
     return `${base}/share/${token}`;
   };
@@ -537,6 +539,18 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-1">
                   <button
                     type="button"
+                    onClick={() => handleHostModeChange('cloud')}
+                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                      hostMode === 'cloud'
+                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
+                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    Netlify Cloud
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleHostModeChange('lan')}
                     className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
                       hostMode === 'lan'
@@ -546,18 +560,6 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                   >
                     <Wifi className="w-3.5 h-3.5" />
                     Wi-Fi LAN
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleHostModeChange('cloud')}
-                    className={`px-2.5 py-1.5 rounded-[4px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
-                      hostMode === 'cloud'
-                        ? 'bg-[#1E3A8A] border-[#3B82F6] text-white shadow-sm'
-                        : 'bg-[#252B34] border-[#353C48] text-[#8B949E] hover:text-[#C9D1D9] hover:bg-[#2C333E]'
-                    }`}
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    Public Web
                   </button>
                   <button
                     type="button"
@@ -595,7 +597,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                       type="text"
                       value={customHost}
                       onChange={(e) => setCustomHost(e.target.value)}
-                      placeholder="e.g. https://my-tunnel.loca.lt or http://192.168.1.50:5174"
+                      placeholder="e.g. https://mydicom.netlify.app or http://192.168.1.50:5174"
                       className="flex-1 bg-[#1C1F26] border border-[#353C48] rounded-[4px] px-2.5 py-1 text-[11px] text-white font-mono outline-none focus:border-[#3B82F6]"
                     />
                     <button

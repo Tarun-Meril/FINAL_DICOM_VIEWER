@@ -201,7 +201,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Server error');
-      const hostUrl = import.meta.env.VITE_SHARE_BASE_URL || window.location.origin;
+      const hostUrl = import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://mydicom.netlify.app';
       const generatedUrl = `${hostUrl}/share/${data.token}`;
       if (window.electronAPI?.copyText) {
         await window.electronAPI.copyText(generatedUrl);

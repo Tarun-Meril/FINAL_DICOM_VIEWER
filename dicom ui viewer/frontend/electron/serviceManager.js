@@ -39,16 +39,20 @@ export class ServiceManager {
     // Cross-platform persistent clinical data directory structure
     let programDataRoot;
     if (process.platform === 'win32') {
-      const baseProgramData = process.env.ProgramData || app.getPath('appData');
-      const legacyPath = path.join(baseProgramData, 'MedView PRO');
-      const newPath = path.join(baseProgramData, 'MerilView');
-      programDataRoot = newPath;
-      if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
-        try {
-          fs.renameSync(legacyPath, newPath);
-          console.log(`[ServiceManager] Migrated Windows clinical data from '${legacyPath}' to '${newPath}'`);
-        } catch {
-          programDataRoot = legacyPath;
+      if (fs.existsSync('D:\\MerilView_Data') || fs.existsSync('D:\\')) {
+        programDataRoot = 'D:\\MerilView_Data';
+      } else {
+        const baseProgramData = process.env.ProgramData || app.getPath('appData');
+        const legacyPath = path.join(baseProgramData, 'MedView PRO');
+        const newPath = path.join(baseProgramData, 'MerilView');
+        programDataRoot = newPath;
+        if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
+          try {
+            fs.renameSync(legacyPath, newPath);
+            console.log(`[ServiceManager] Migrated Windows clinical data from '${legacyPath}' to '${newPath}'`);
+          } catch {
+            programDataRoot = legacyPath;
+          }
         }
       }
     } else if (process.platform === 'darwin') {
