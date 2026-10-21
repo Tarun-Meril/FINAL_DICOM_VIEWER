@@ -215,8 +215,8 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
     } catch (e) {
       console.warn('[VR] Remote PACS unavailable or returned non-JSON. Synthesizing clinical 3D volume...', e);
       try {
-        s.setProgress({ phase: 'extract', done: 0, total: 48, message: 'Reconstructing 3D clinical volume…' });
-        const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, seriesUID || undefined, 48);
+        s.setProgress({ phase: 'extract', done: 0, total: 96, message: 'Reconstructing 3D clinical volume…' });
+        const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, seriesUID || undefined, 96);
         const caps = probeGpu();
         const result = await loadDataset(syntheticBuffers, {
           onProgress: (ev) => s.setProgress(ev),

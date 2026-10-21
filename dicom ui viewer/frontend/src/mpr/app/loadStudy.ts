@@ -359,8 +359,8 @@ export async function loadStudyFromPacs(
     return { study: loadedStudy, selectedSeriesUid: seriesInstanceUid };
   } catch (err) {
     console.warn('[MPR] Remote PACS unavailable or returned non-JSON. Synthesizing clinical volumetric study...', err);
-    onProgress?.(0, 48, 'Synthesizing volumetric CT reconstruction...');
-    const syntheticFiles = generateSyntheticVolumeFiles(studyUid, targetSeriesUid || seriesUid, 48);
+    onProgress?.(0, 96, 'Synthesizing volumetric CT reconstruction...');
+    const syntheticFiles = generateSyntheticVolumeFiles(studyUid, targetSeriesUid || seriesUid, 96);
     const loadedStudy = await loadStudyFromFiles(syntheticFiles, (done, count) => {
       onProgress?.(done, count, `Parsing volumetric CT slice ${done}/${count}`);
     });
