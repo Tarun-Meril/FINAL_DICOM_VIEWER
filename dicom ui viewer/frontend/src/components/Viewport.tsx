@@ -191,7 +191,8 @@ export default function Viewport({
         for (const ep of uniqueEndpoints) {
           try {
             const res = await fetch(ep);
-            if (res.ok) {
+            const cType = res.headers.get('content-type') || '';
+            if (res.ok && !cType.includes('text/html')) {
               const data = await res.json();
               const list = Array.isArray(data) ? data : (data?.data || []);
               if (list.length > 0) {
@@ -254,7 +255,8 @@ export default function Viewport({
         for (const ep of uniqueEndpoints) {
           try {
             const res = await fetch(ep);
-            if (res.ok) {
+            const cType = res.headers.get('content-type') || '';
+            if (res.ok && !cType.includes('text/html')) {
               const data = await res.json();
               const list = Array.isArray(data) ? data : (data?.data || []);
               if (list.length > 0) {

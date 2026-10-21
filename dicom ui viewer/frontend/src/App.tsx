@@ -257,10 +257,19 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
       useAppStore.getState().reset();
     } catch (_) {}
 
-    // Clean URL so old ?studyUID query params or stale paths don't persist
+    // Clean URL so old ?studyUID query params don't persist, but preserve apiHost
     try {
-      if (window.location.search || !window.location.hash.includes(studyUid)) {
-        window.history.replaceState({}, '', `/#/viewer/${encodeURIComponent(studyUid)}`);
+      let currentApiHost = new URLSearchParams(window.location.search).get('apiHost');
+      if (!currentApiHost && window.location.hash && window.location.hash.includes('?')) {
+        currentApiHost = new URLSearchParams(window.location.hash.split('?')[1]).get('apiHost');
+      }
+      if (!currentApiHost && typeof localStorage !== 'undefined') {
+        currentApiHost = localStorage.getItem('merilview_api_host') || localStorage.getItem('merilview_cloudflare_tunnel_url');
+      }
+      const apiParam = currentApiHost ? `?apiHost=${encodeURIComponent(currentApiHost)}` : '';
+
+      if (window.location.search || !window.location.hash.includes(studyUid) || (currentApiHost && !window.location.hash.includes('apiHost'))) {
+        window.history.replaceState({}, '', `/#/viewer/${encodeURIComponent(studyUid)}${apiParam}`);
       }
     } catch (_) {}
 
