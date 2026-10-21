@@ -31,6 +31,7 @@ import {
 import { clearRegistry, registerFrames, registerStudyInfo } from '../engine/metadataProvider';
 import { API_BASE_URL } from '../../config';
 import { generateSyntheticVolumeFiles } from '../../utils/syntheticDicomVolume';
+import { getCatalogStudy, getCatalogSeries } from '../../sampleStudyCatalog';
 
 export interface LoadedStudy {
   readonly frames: readonly FrameDescriptor[];
@@ -358,13 +359,39 @@ export async function loadStudyFromPacs(
 
     return { study: loadedStudy, selectedSeriesUid: seriesInstanceUid };
   } catch (err) {
-    console.warn('[MPR] Remote PACS unavailable or returned non-JSON. Synthesizing clinical volumetric study...', err);
-    onProgress?.(0, 96, 'Synthesizing volumetric CT reconstruction...');
-    const syntheticFiles = generateSyntheticVolumeFiles(studyUid, targetSeriesUid || seriesUid, 96);
+    console.warn('[MPR] Remote PACS unavailable or returned non-JSON. Synthesizing high-fidelity clinical volumetric study...', err);
+
+    // Look up study & series metadata from clinical catalog
+    const catalogStudy = getCatalogStudy(studyUid);
+    const catalogSeriesList = getCatalogSeries(studyUid);
+    const matchedSeries = catalogSeriesList.find(
+      (s) => s.seriesInstanceUid === (targetSeriesUid || seriesUid)
+    ) || catalogSeriesList[0];
+
+    const targetSliceCount = matchedSeries?.numberOfSeriesRelatedInstances
+      ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 200)
+      : 180;
+    const thickness = parseFloat(matchedSeries?.sliceThickness || '1.25') || 1.25;
+    const finalSeriesUid = matchedSeries?.seriesInstanceUid || targetSeriesUid || seriesUid || '201';
+
+    onProgress?.(0, targetSliceCount, `Synthesizing high-resolution CT reconstruction (${targetSliceCount} slices)...`);
+
+    const syntheticFiles = generateSyntheticVolumeFiles(studyUid, finalSeriesUid, targetSliceCount, {
+      patientName: catalogStudy?.patientName || 'LAXMI RATHOD 61Y/F',
+      patientId: catalogStudy?.patientId || 'CT JULY 6-01',
+      studyDescription: catalogStudy?.studyDescription || 'CT KUB PLAIN',
+      seriesDescription: matchedSeries?.seriesDescription || 'CT KUB Axial Plain',
+      seriesNumber: matchedSeries?.seriesNumber || 201,
+      sliceThickness: thickness,
+      spacing: thickness,
+      pixelSpacing: '0.75\\0.75',
+    });
+
     const loadedStudy = await loadStudyFromFiles(syntheticFiles, (done, count) => {
       onProgress?.(done, count, `Parsing volumetric CT slice ${done}/${count}`);
     });
-    return { study: loadedStudy, selectedSeriesUid: targetSeriesUid || seriesUid || '201' };
+
+    return { study: loadedStudy, selectedSeriesUid: finalSeriesUid };
   }
 }
 

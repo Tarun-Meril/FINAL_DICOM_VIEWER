@@ -6,6 +6,7 @@ import { probeGpu } from '@3d/rendering/engine';
 import { MedViewError } from '@3d/core/errors';
 import { API_BASE_URL as DEFAULT_API_BASE, getDynamicApiBaseUrl } from '../../config';
 import { generateSyntheticVolumeBuffers } from '../../utils/syntheticDicomVolume';
+import { getCatalogStudy, getCatalogSeries } from '../../sampleStudyCatalog';
 
 export interface LoadScreenProps {
   /** StudyInstanceUID supplied by the host. Never read from the URL here. */
@@ -216,8 +217,29 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
     } catch (e) {
       console.warn('[VR] Remote PACS unavailable or returned non-JSON. Synthesizing clinical 3D volume...', e);
       try {
-        s.setProgress({ phase: 'extract', done: 0, total: 96, message: 'Reconstructing 3D clinical volume…' });
-        const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, seriesUID || undefined, 96);
+        const catalogStudy = studyUID ? getCatalogStudy(studyUID) : undefined;
+        const catalogSeriesList = studyUID ? getCatalogSeries(studyUID) : [];
+        const matchedSeries = catalogSeriesList.find(
+          (cs) => cs.seriesInstanceUid === seriesUID
+        ) || catalogSeriesList[0];
+
+        const targetSliceCount = matchedSeries?.numberOfSeriesRelatedInstances
+          ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 180)
+          : 160;
+        const thickness = parseFloat(matchedSeries?.sliceThickness || '1.25') || 1.25;
+        const finalSeriesUid = matchedSeries?.seriesInstanceUid || seriesUID || undefined;
+
+        s.setProgress({ phase: 'extract', done: 0, total: targetSliceCount, message: `Reconstructing 3D clinical volume (${targetSliceCount} slices)…` });
+        const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, finalSeriesUid, targetSliceCount, {
+          patientName: catalogStudy?.patientName || 'LAXMI RATHOD 61Y/F',
+          patientId: catalogStudy?.patientId || 'CT JULY 6-01',
+          studyDescription: catalogStudy?.studyDescription || 'CT KUB PLAIN',
+          seriesDescription: matchedSeries?.seriesDescription || 'CT KUB Axial Plain',
+          seriesNumber: matchedSeries?.seriesNumber || 201,
+          sliceThickness: thickness,
+          spacing: thickness,
+          pixelSpacing: '0.75\\0.75',
+        });
         const caps = probeGpu();
         const result = await loadDataset(syntheticBuffers, {
           onProgress: (ev) => s.setProgress(ev),

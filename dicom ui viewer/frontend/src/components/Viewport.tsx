@@ -176,13 +176,14 @@ export default function Viewport({
       setLoadingError(null);
 
       const fetchSeries = async () => {
-        const dynamicPacs = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://127.0.0.1:3001';
-        const endpoints = [
-          `${API_BASE_URL}/api/studies/${studyUid}/series`,
-          `${dynamicPacs}/api/studies/${studyUid}/series`,
-          `http://127.0.0.1:8000/api/studies/${studyUid}/series`,
-          `http://127.0.0.1:3001/api/studies/${studyUid}/series`
-        ];
+        const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        const endpoints = isRemote
+          ? [`${API_BASE_URL}/api/studies/${studyUid}/series`]
+          : [
+              `${API_BASE_URL}/api/studies/${studyUid}/series`,
+              `http://127.0.0.1:3001/api/studies/${studyUid}/series`,
+              `http://127.0.0.1:8000/api/studies/${studyUid}/series`
+            ];
         const uniqueEndpoints = [...new Set(endpoints)];
         let seriesList: any[] = [];
         let lastErr: any = null;
@@ -238,13 +239,14 @@ export default function Viewport({
       setLoadingError(null);
 
       const fetchInstances = async () => {
-        const dynamicPacs = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://127.0.0.1:3001';
-        const endpoints = [
-          `${API_BASE_URL}/api/series/${currentSeriesId}/instances`,
-          `${dynamicPacs}/api/series/${currentSeriesId}/instances`,
-          `http://127.0.0.1:8000/api/series/${currentSeriesId}/instances`,
-          `http://127.0.0.1:3001/api/series/${currentSeriesId}/instances`
-        ];
+        const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        const endpoints = isRemote
+          ? [`${API_BASE_URL}/api/series/${currentSeriesId}/instances`]
+          : [
+              `${API_BASE_URL}/api/series/${currentSeriesId}/instances`,
+              `http://127.0.0.1:3001/api/series/${currentSeriesId}/instances`,
+              `http://127.0.0.1:8000/api/series/${currentSeriesId}/instances`
+            ];
         const uniqueEndpoints = [...new Set(endpoints)];
         let instances: any[] = [];
         let lastErr: any = null;
