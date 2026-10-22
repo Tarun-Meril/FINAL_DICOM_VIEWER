@@ -353,7 +353,8 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(testUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
-        if (res.ok) {
+        const cType = res.headers.get('content-type') || '';
+        if (res.ok && !cType.includes('text/html')) {
           response = res;
           break;
         }
@@ -361,8 +362,10 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
     }
 
     if (!response || !response.ok) {
-      // Fetch the real DICOM instance file from PACS
+      // Fetch the real DICOM instance file from PACS or Supabase Storage
+      const directUrl = imageId.replace(/^wadouri:/, '');
       const dcmUrls = [
+        directUrl,
         `${activeBase}/api/instances/${sopUid}/file`,
         `${API_BASE_URL}/api/instances/${sopUid}/file`,
         `${typeof window !== 'undefined' ? window.location.origin : ''}/api/instances/${sopUid}/file`,
@@ -373,9 +376,13 @@ async function loadServerPixelFrameImage(imageId: string, sopUid: string) {
       for (const dUrl of [...new Set(dcmUrls)]) {
         try {
           const dRes = await fetch(dUrl);
-          if (dRes.ok) {
-            dcmBuf = await dRes.arrayBuffer();
-            break;
+          const cType = dRes.headers.get('content-type') || '';
+          if (dRes.ok && !cType.includes('text/html')) {
+            const buf = await dRes.arrayBuffer();
+            if (buf && buf.byteLength > 132) {
+              dcmBuf = buf;
+              break;
+            }
           }
         } catch (_) {}
       }
@@ -694,15 +701,18 @@ function wadoImageLoaderWithFallback(imageId: string, options: any) {
     normalizedImageId = normalizedImageId.replace(':8000', ':3001');
   }
 
-  const sopMatch = normalizedImageId.match(/\/instances\/([^\/]+)\/file/);
-  const sopUid = sopMatch ? sopMatch[1] : null;
+  const sopMatch = normalizedImageId.match(/\/instances\/([^\/]+)\/file/) || 
+                   normalizedImageId.match(/\/([^\/]+)\.dcm/) ||
+                   normalizedImageId.match(/\/([^\/]+)$/);
+  const sopUid = sopMatch ? sopMatch[1].replace(/\.dcm$/, '') : (normalizedImageId.split('/').pop()?.replace(/\.dcm$/, '') || 'instance-0');
+  const isRemote = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
   try {
     const res = dicomImageLoader.wadouri.loadImage(normalizedImageId, options);
     if (res && res.promise) {
       return {
         promise: res.promise.catch((err: any) => {
-          if (sopUid && !normalizedImageId.includes(':3001')) {
+          if (!isRemote && sopUid && !normalizedImageId.includes(':3001')) {
             const p3001Id = `wadouri:http://127.0.0.1:3001/api/instances/${sopUid}/file`;
             try {
               const res2 = dicomImageLoader.wadouri.loadImage(p3001Id, options);
@@ -711,25 +721,19 @@ function wadoImageLoaderWithFallback(imageId: string, options: any) {
               }
             } catch (_) {}
           }
-          if (sopUid) {
-            console.warn(`[Cornerstone3D] Native wadouri loadImage failed for ${sopUid}, using server PNG fallback:`, err);
-            return loadServerPixelFrameImage(normalizedImageId, sopUid);
-          }
-          throw err;
+          console.warn(`[Cornerstone3D] wadouri loadImage failed for ${sopUid}, using fallback:`, err);
+          return loadServerPixelFrameImage(normalizedImageId, sopUid);
         }),
         cancelFn: res.cancelFn || (() => { }),
       };
     }
     return res;
   } catch (err) {
-    if (sopUid) {
-      console.warn(`[Cornerstone3D] Synchronous error loading ${sopUid}, falling back to PNG:`, err);
-      return {
-        promise: loadServerPixelFrameImage(normalizedImageId, sopUid),
-        cancelFn: () => { },
-      };
-    }
-    throw err;
+    console.warn(`[Cornerstone3D] Synchronous error loading ${sopUid}, falling back:`, err);
+    return {
+      promise: loadServerPixelFrameImage(normalizedImageId, sopUid),
+      cancelFn: () => { },
+    };
   }
 }
 

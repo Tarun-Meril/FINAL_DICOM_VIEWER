@@ -652,10 +652,11 @@ export default function Viewport({
       const supabaseBucketUrl = 'https://tlksvspvgicifyeifrll.supabase.co/storage/v1/object/public/dicom-studies';
 
       const imageIds = instancesList.map((inst, idx) => {
-        const sopUid = inst.sop_instance_uid || inst.sopInstanceUid;
+        const sopUid = inst.sop_instance_uid || inst.sopInstanceUid || inst.sopUID || `slice-${idx}`;
+        const activeStudyUid = studyUid || inst.study_instance_uid || inst.studyInstanceUid || 'study-0';
         let imgId = `wadouri:${API_BASE_URL}/api/instances/${sopUid}/file`;
         if (isRemoteEnv) {
-          imgId = `wadouri:${supabaseBucketUrl}/${studyUid}/${sopUid}.dcm`;
+          imgId = `wadouri:${supabaseBucketUrl}/${activeStudyUid}/${sopUid}.dcm`;
         }
         const rawIpp = inst.image_position || inst.imagePositionPatient;
         const rawIop = inst.image_orientation || inst.imageOrientationPatient;

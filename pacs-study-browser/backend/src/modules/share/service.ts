@@ -158,16 +158,33 @@ export class ShareService {
       setTimeout(async () => {
         try {
           const { supabase } = await import('./supabase');
-          for (const inst of instancesList) {
-            if (inst && inst.filePath && fs.existsSync(inst.filePath)) {
-              const fileBuffer = fs.readFileSync(inst.filePath);
-              const sopUid = inst.sopInstanceUid || inst.sop_instance_uid;
+          const validInstances = instancesList.filter(
+            (inst: any) => inst && inst.filePath && fs.existsSync(inst.filePath)
+          );
+          logger.info('share', `Starting background upload of ${validInstances.length} slices to Supabase Storage for study: ${studyUid}`);
+
+          const CONCURRENCY = 8;
+          let cursor = 0;
+          const uploadWorker = async () => {
+            while (cursor < validInstances.length) {
+              const current = validInstances[cursor++];
+              if (!current) break;
+              const sopUid = current.sopInstanceUid || current.sop_instance_uid;
               const storagePath = `${studyUid}/${sopUid}.dcm`;
-              await supabase.storage
-                .from('dicom-studies')
-                .upload(storagePath, fileBuffer, { contentType: 'application/dicom', upsert: true });
+              try {
+                const fileBuffer = fs.readFileSync(current.filePath);
+                await supabase.storage
+                  .from('dicom-studies')
+                  .upload(storagePath, fileBuffer, { contentType: 'application/dicom', upsert: true });
+              } catch (sliceErr: any) {
+                // individual error handling
+              }
             }
-          }
+          };
+
+          const workers = Array.from({ length: Math.min(CONCURRENCY, validInstances.length) }, () => uploadWorker());
+          await Promise.all(workers);
+          logger.info('share', `Completed background upload of slices for study ${studyUid}`);
         } catch (uploadErr: any) {
           logger.warn('share', `Supabase storage upload background notice: ${uploadErr.message}`);
         }
