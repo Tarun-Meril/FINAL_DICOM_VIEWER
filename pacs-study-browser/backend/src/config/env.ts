@@ -49,12 +49,12 @@ export const ENV = {
     HOST: process.env.PACS_HOST || '127.0.0.1',
     PORT: Number(process.env.PACS_PORT) || 11112,
   },
-  // Supabase Configuration - disabled for 100% Local Drive Mode
-  USE_SUPABASE: process.env.USE_SUPABASE === 'true',
+  // Supabase Cloud Configuration - Universal Sharing
+  USE_SUPABASE: process.env.USE_SUPABASE !== 'false',
   SUPABASE: {
-    URL: process.env.SUPABASE_URL || '',
-    ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
-    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    URL: process.env.SUPABASE_URL || 'https://tlksvspvgicifyeifrll.supabase.co',
+    ANON_KEY: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsa3N2c3B2Z2ljaWZ5ZWlmcmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2Mzg4MjMsImV4cCI6MjEwODIxNDgyM30.BcqxYPlQSruTkzvCzt0ATwe0U2Puls9Oy944XTEqkKo',
+    SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsa3N2c3B2Z2ljaWZ5ZWlmcmxsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjYzODgyMywiZXhwIjoyMTA4MjE0ODIzfQ.iIAofJu9Wet7Yx8L6I08FWOrhAFlw3HSzjcQvzdNAyw',
   },
   // Share Study Settings
   SHARE: {

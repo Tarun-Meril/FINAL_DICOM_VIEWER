@@ -1,5 +1,7 @@
+import fs from 'fs';
 import crypto from 'crypto';
 import { db } from '../../database/connection';
+import { ENV } from '../../config/env';
 import { ShareRepository, ShareLinkDb } from './repository';
 import { TokenGenerator, defaultTokenGenerator } from './tokenGenerator';
 import { SharePermissions } from './permissions';
@@ -114,7 +116,11 @@ export class ShareService {
     // 4. Generate unique cryptographically secure token
     const token = this.tokenGenerator.generate();
 
-    // 5. Build database payload
+    // 5. Gather study, series, and instance metadata for universal cloud access
+    const matchingStudy = db.getStudies().find((s: any) => s.studyInstanceUid === studyUid);
+    const seriesList = db.getSeries(studyUid);
+    const instancesList = seriesList.flatMap((s: any) => db.getInstances(s.seriesInstanceUid) || []);
+
     const linkData: ShareLinkDb = {
       token,
       study_uid: studyUid,
@@ -124,14 +130,51 @@ export class ShareService {
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       created_by: createdBy ?? 'system',
       revoked: false,
+      study_data: matchingStudy || null,
+      series_data: seriesList || [],
+      instances_data: instancesList.map((inst: any) => ({
+        sopInstanceUid: inst.sopInstanceUid || inst.sop_instance_uid,
+        seriesInstanceUid: inst.seriesInstanceUid || inst.series_instance_uid,
+        instanceNumber: inst.instanceNumber || inst.instance_number || 1,
+        sliceThickness: inst.sliceThickness || inst.slice_thickness || 1.25,
+        imagePosition: inst.imagePosition || inst.imagePositionPatient || null,
+        imageOrientation: inst.imageOrientation || inst.imageOrientationPatient || null,
+        pixelSpacing: inst.pixelSpacing || [1.0, 1.0],
+        windowCenter: inst.windowCenter ?? 40,
+        windowWidth: inst.windowWidth ?? 400,
+        rows: inst.rows || 512,
+        columns: inst.columns || 512,
+        modality: inst.modality || 'CT'
+      }))
     };
 
-    // 6. Save to Supabase
+    // 6. Save to Supabase Cloud Database (and local DB)
     const savedLink = await this.repository.createShareLink(linkData);
 
     logger.info('share', `Generated secure share link for study: ${studyUid}`, { token, createdBy });
 
-    // 7. Audit log creation
+    // 7. Asynchronously sync DICOM slice files to Supabase Storage in the background
+    if (ENV.USE_SUPABASE && instancesList.length > 0) {
+      setTimeout(async () => {
+        try {
+          const { supabase } = await import('./supabase');
+          for (const inst of instancesList) {
+            if (inst && inst.filePath && fs.existsSync(inst.filePath)) {
+              const fileBuffer = fs.readFileSync(inst.filePath);
+              const sopUid = inst.sopInstanceUid || inst.sop_instance_uid;
+              const storagePath = `${studyUid}/${sopUid}.dcm`;
+              await supabase.storage
+                .from('dicom-studies')
+                .upload(storagePath, fileBuffer, { contentType: 'application/dicom', upsert: true });
+            }
+          }
+        } catch (uploadErr: any) {
+          logger.warn('share', `Supabase storage upload background notice: ${uploadErr.message}`);
+        }
+      }, 50);
+    }
+
+    // 8. Audit log creation
     await this.logAudit(token, studyUid, 'CREATE', clientMetadata);
 
     return savedLink;

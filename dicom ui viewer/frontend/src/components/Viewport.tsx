@@ -269,6 +269,20 @@ export default function Viewport({
           }
         }
 
+        // Check if instances were loaded from Supabase Cloud share
+        if (instances.length === 0) {
+          try {
+            const rawCloud = sessionStorage.getItem('merilview_cloud_instances');
+            if (rawCloud) {
+              const allCloudInst = JSON.parse(rawCloud);
+              const matching = allCloudInst.filter((ci: any) => (ci.seriesInstanceUid || ci.series_instance_uid) === currentSeriesId);
+              if (matching.length > 0) {
+                instances = matching;
+              }
+            }
+          } catch (_) {}
+        }
+
         // Resilient fallback to catalog instances if server is offline or on public cloud
         if (instances.length === 0) {
           instances = generateCatalogInstances(currentSeriesId, totalImages || 175);
@@ -634,9 +648,15 @@ export default function Viewport({
         return;
       }
 
+      const isRemoteEnv = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('merilview_api_host');
+      const supabaseBucketUrl = 'https://tlksvspvgicifyeifrll.supabase.co/storage/v1/object/public/dicom-studies';
+
       const imageIds = instancesList.map((inst, idx) => {
         const sopUid = inst.sop_instance_uid || inst.sopInstanceUid;
-        const imgId = `wadouri:${API_BASE_URL}/api/instances/${sopUid}/file`;
+        let imgId = `wadouri:${API_BASE_URL}/api/instances/${sopUid}/file`;
+        if (isRemoteEnv) {
+          imgId = `wadouri:${supabaseBucketUrl}/${studyUid}/${sopUid}.dcm`;
+        }
         const rawIpp = inst.image_position || inst.imagePositionPatient;
         const rawIop = inst.image_orientation || inst.imageOrientationPatient;
         const rawPs = inst.pixel_spacing || inst.pixelSpacing;

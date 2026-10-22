@@ -1,5 +1,6 @@
 import { db } from '../../database/connection';
 import { ENV } from '../../config/env';
+import { supabase } from './supabase';
 
 export interface ShareLinkDb {
   id?: string;
@@ -19,6 +20,9 @@ export interface ShareLinkDb {
   updated_at?: string;
   last_accessed?: string | null;
   revoked: boolean;
+  study_data?: any;
+  series_data?: any;
+  instances_data?: any;
 }
 
 export interface AuditLogDb {
@@ -37,13 +41,12 @@ export class ShareRepository {
   private useLocalOnly: boolean;
 
   constructor(supabaseClient?: any) {
-    this.supabaseClient = supabaseClient;
-    // Pure local drive mode by default
-    this.useLocalOnly = !ENV.USE_SUPABASE && !supabaseClient;
+    this.supabaseClient = supabaseClient || (ENV.USE_SUPABASE ? supabase : undefined);
+    this.useLocalOnly = !ENV.USE_SUPABASE || !this.supabaseClient;
   }
 
   /**
-   * Creates a new share link entry stored locally on the drive.
+   * Creates a new share link entry stored locally and on Supabase Cloud.
    */
   async createShareLink(link: ShareLinkDb): Promise<ShareLinkDb> {
     const newLink = {
@@ -67,17 +70,33 @@ export class ShareRepository {
     }
 
     try {
+      const payload: any = {
+        token: newLink.token,
+        study_uid: newLink.study_uid,
+        sharing_scope: newLink.sharing_scope,
+        permissions: newLink.permissions,
+        password_hash: newLink.password_hash,
+        expires_at: newLink.expires_at,
+        created_by: newLink.created_by,
+        revoked: newLink.revoked,
+      };
+      if (newLink.study_data) payload.study_data = newLink.study_data;
+      if (newLink.series_data) payload.series_data = newLink.series_data;
+      if (newLink.instances_data) payload.instances_data = newLink.instances_data;
+
       const { data, error } = await this.supabaseClient
         .from('share_links')
-        .insert(link)
+        .insert(payload)
         .select()
         .single();
 
       if (error) {
+        console.warn('[ShareRepository] Supabase insert notice:', error.message);
         return newLink;
       }
       return data || newLink;
-    } catch {
+    } catch (err: any) {
+      console.warn('[ShareRepository] Supabase insert error:', err.message);
       return newLink;
     }
   }

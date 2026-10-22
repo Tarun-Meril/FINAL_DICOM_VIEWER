@@ -20,8 +20,9 @@ if (typeof globalThis.WebSocket === 'undefined') {
   (globalThis as any).WebSocket = WebSocketStub;
 }
 
-const DEFAULT_SUPABASE_URL = 'https://gjtvxsuorghxqqazlszj.supabase.co';
-const DEFAULT_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqdHZ4c3VvcmdoeHFxYXpsc3pqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTE3MjYzMiwiZXhwIjoyMTA2NzQ4NjMyfQ.Ly6sHtBM4WhnglXkdKFeXKe6gLzNFC3b0JCpVyurk2k';
+export const DEFAULT_SUPABASE_URL = 'https://tlksvspvgicifyeifrll.supabase.co';
+export const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsa3N2c3B2Z2ljaWZ5ZWlmcmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2Mzg4MjMsImV4cCI6MjEwODIxNDgyM30.BcqxYPlQSruTkzvCzt0ATwe0U2Puls9Oy944XTEqkKo';
+export const DEFAULT_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsa3N2c3B2Z2ljaWZ5ZWlmcmxsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjYzODgyMywiZXhwIjoyMTA4MjE0ODIzfQ.iIAofJu9Wet7Yx8L6I08FWOrhAFlw3HSzjcQvzdNAyw';
 
 const supabaseUrl = (ENV.SUPABASE.URL && !ENV.SUPABASE.URL.includes('placeholder')) ? ENV.SUPABASE.URL : DEFAULT_SUPABASE_URL;
 // Use SERVICE_ROLE_KEY for server-side operations that bypass standard row-level policies
@@ -32,4 +33,5 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: false, // Server environment, no session persistence needed
   }
 });
+
 

@@ -14,6 +14,7 @@ import { API_BASE_URL } from './config';
 import { getCatalogStudy, getCatalogSeries } from './sampleStudyCatalog';
 import { clearSession } from './vr/state/session';
 import { useAppStore } from './vr/state/store';
+import { getSupabaseShareLink, logSupabaseAccess } from './supabase';
 
 const SHARE_API_BASE_URL = API_BASE_URL;
 
@@ -117,7 +118,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
 
       let validatedData: any = null;
 
-      // 1. Try fetching from PACS Share API
+      // 1. Try fetching from PACS Share API (if running locally or connected via tunnel)
       try {
         const res = await fetch(`${SHARE_API_BASE_URL}/api/share/${token}`, { headers });
         if (res.status === 401) {
@@ -133,7 +134,49 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
           validatedData = await res.json();
         }
       } catch (e) {
-        console.warn('[MerilView] API share validate failed:', e);
+        console.warn('[MerilView] Local API share validate bypassed/offline:', e);
+      }
+
+      // 2. Query Supabase Cloud Database directly (Universal 24/7 on Netlify)
+      if (!validatedData) {
+        try {
+          const sbRecord = await getSupabaseShareLink(token);
+          if (sbRecord) {
+            // Check expiration
+            if (sbRecord.expires_at && new Date(sbRecord.expires_at).getTime() < Date.now()) {
+              showToast('This share link has expired', 'error');
+              return;
+            }
+            if (sbRecord.revoked) {
+              showToast('This share link has been revoked', 'error');
+              return;
+            }
+            // Check password
+            if (sbRecord.password_hash) {
+              if (!password) {
+                setPasswordPromptToken(token);
+                setShowPasswordPrompt(true);
+                return;
+              }
+            }
+            validatedData = {
+              study_uid: sbRecord.study_uid,
+              permissions: sbRecord.permissions,
+              expires_at: sbRecord.expires_at,
+              study_data: sbRecord.study_data,
+              series_data: sbRecord.series_data,
+              instances_data: sbRecord.instances_data
+            };
+            if (sbRecord.instances_data && sbRecord.instances_data.length > 0) {
+              try {
+                sessionStorage.setItem('merilview_cloud_instances', JSON.stringify(sbRecord.instances_data));
+              } catch (_) {}
+            }
+            logSupabaseAccess(token, sbRecord.study_uid, 'OPEN');
+          }
+        } catch (sbErr) {
+          console.warn('[MerilView] Supabase cloud lookup error:', sbErr);
+        }
       }
 
       // 3. Resilient Demo Fallback: if token is not found anywhere, load default clinical study
@@ -151,7 +194,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
       setShowPasswordPrompt(false);
       setPasswordPromptError('');
 
-      loadStudyAndSeries(validatedData.study_uid);
+      loadStudyAndSeries(validatedData.study_uid, validatedData);
     } catch (err: any) {
       console.error('Failed to validate share link:', err);
       showToast('Connection to share validation failed', 'error');
@@ -243,7 +286,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
   const [metadataOverlayOpen, setMetadataOverlayOpen] = useState<boolean>(true);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-  const loadStudyAndSeries = async (studyUid: string) => {
+  const loadStudyAndSeries = async (studyUid: string, cloudPayload?: any) => {
     if (!studyUid || studyUid === 'undefined' || studyUid === 'null') return;
     if (currentStudyUidRef.current === studyUid && pacsStudy) {
       console.log(`[MerilView] Study ${studyUid} is already loaded. Skipping duplicate load.`);
@@ -341,6 +384,9 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
 
     try {
       let studyData = await fetchWithFallback(`/api/studies/${studyUid}`);
+      if (!studyData && cloudPayload?.study_data) {
+        studyData = { data: cloudPayload.study_data };
+      }
       if (!studyData) {
         const catalogStudy = getCatalogStudy(studyUid);
         if (catalogStudy) {
@@ -375,6 +421,9 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
       }
 
       let seriesData = await fetchWithFallback(`/api/studies/${studyUid}/series`);
+      if (!seriesData && cloudPayload?.series_data && cloudPayload.series_data.length > 0) {
+        seriesData = { data: cloudPayload.series_data };
+      }
       if (!seriesData) {
         const catalogSeries = getCatalogSeries(studyUid);
         if (catalogSeries && catalogSeries.length > 0) {
