@@ -143,8 +143,8 @@ input[type='color'] { width: 28px; height: 22px; padding: 0; border: 1px solid v
 .note.ok { border-color: var(--ok); }
 
 /* ------------------------------------------------------------- viewport */
-.viewport { position: absolute; inset: 0; }
-.viewport canvas { display: block; outline: none; }
+.viewport { position: absolute; inset: 0; touch-action: none; }
+.viewport canvas { display: block; outline: none; touch-action: none; }
 .overlay { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); font-size: 11px; }
 .overlay .corner { position: absolute; padding: 10px 12px; color: var(--fg-1); text-shadow: 0 1px 3px #000; }
 .overlay .tl { top: 0; left: 0; }
@@ -166,6 +166,164 @@ input[type='color'] { width: 28px; height: 22px; padding: 0; border: 1px solid v
 .busy .box { text-align: center; min-width: 320px; }
 .bar { height: 3px; background: var(--bg-3); border-radius: 2px; overflow: hidden; margin-top: 10px; }
 .bar > i { display: block; height: 100%; background: var(--accent); transition: width .15s linear; }
+
+/* ----------------------------------------------------------- responsive */
+.vr-mobile-close {
+  display: none;
+}
+.vr-panel-backdrop {
+  display: none;
+}
+.vr-panel-toggles {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .medview-vr .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .medview-vr .toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    height: 44px;
+    padding: 0 6px;
+    gap: 3px;
+  }
+  .medview-vr .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .medview-vr .app-body {
+    display: flex;
+    position: relative;
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .medview-vr .viewport-wrap {
+    flex: 1 1 100%;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  .medview-vr .viewport {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  .medview-vr .viewport canvas {
+    touch-action: none;
+  }
+
+  .medview-vr .panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 320px;
+    max-width: 86vw;
+    z-index: 40;
+    background: var(--bg-1);
+    box-shadow: 6px 0 24px rgba(0, 0, 0, 0.7);
+    border-right: 1px solid var(--line);
+    display: none;
+  }
+
+  .medview-vr .panel.right {
+    left: auto;
+    right: 0;
+    border-right: none;
+    border-left: 1px solid var(--line);
+    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.7);
+  }
+
+  .medview-vr .panel[data-mobile-open='true'] {
+    display: flex !important;
+  }
+
+  .vr-panel-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 35;
+  }
+
+  .vr-mobile-close {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--fg-2);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    padding: 0;
+  }
+  .vr-mobile-close:hover {
+    background: var(--bg-hover);
+    color: var(--fg-0);
+  }
+
+  .vr-panel-toggles {
+    display: flex !important;
+  }
+
+  .medview-vr .statusbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    scrollbar-width: none;
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 10px;
+    gap: 8px;
+  }
+  .medview-vr .statusbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .medview-vr .overlay .corner {
+    padding: 6px 8px;
+    font-size: 10px;
+    max-width: 48%;
+  }
+  .medview-vr .overlay .corner > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 
 /* ------------------------------------------------------------ status bar */
 .medview-vr .statusbar {

@@ -62,7 +62,7 @@ export default function ViewportGrid({
   const getGridClasses = (layoutStr: string) => {
     switch (layoutStr) {
       case '1x1 Single': return 'grid grid-cols-1 grid-rows-1';
-      case '1x2 Split': return 'grid grid-cols-2 grid-rows-1';
+      case '1x2 Split': return 'grid grid-cols-1 sm:grid-cols-2 grid-rows-2 sm:grid-rows-1';
       case '2x2 Quad': return 'grid grid-cols-2 grid-rows-2';
       case '3x3 Matrix': return 'grid grid-cols-3 grid-rows-3';
       default: return 'grid grid-cols-2 grid-rows-2';

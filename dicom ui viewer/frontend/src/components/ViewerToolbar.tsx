@@ -19,20 +19,20 @@ import {
  * ═══════════════════════════════════════════════════════════════════════ */
 
 const SCALE: Record<string, string> = {
-  /* buttons */
-  '--s-btn-h':     'clamp(32px, calc(17.33px + 1.389vw), 44px)',
-  '--s-icon':      'clamp(14px, calc(10px    + 0.417vw), 18px)',
+  /* buttons - comfortably touch-friendly on mobile (38-44px) while preserving desktop scaling */
+  '--s-btn-h':     'clamp(38px, calc(17.33px + 1.389vw), 44px)',
+  '--s-icon':      'clamp(15px, calc(10px    + 0.417vw), 18px)',
   '--s-font':      'clamp(8.5px, calc(5.67px + 0.278vw), 11px)',
   '--s-grp-font':  'clamp(7.5px, calc(4.67px + 0.278vw), 10px)',
   /* spacing */
-  '--s-btn-gap':   'clamp(1px, calc(-4.67px + 0.556vw), 6px)',
-  '--s-grp-gap':   'clamp(3px, calc(-9.33px + 1.111vw), 12px)',
+  '--s-btn-gap':   'clamp(2px, calc(-4.67px + 0.556vw), 6px)',
+  '--s-grp-gap':   'clamp(4px, calc(-9.33px + 1.111vw), 12px)',
   /* padding */
-  '--s-pad-x':     'clamp(1px, calc(-1.33px + 0.278vw), 5px)',
-  '--s-pad-y':     'clamp(1px, calc(-1.33px + 0.278vw), 4px)',
-  '--s-inner-gap': 'clamp(0px, calc(-2.33px + 0.278vw), 3px)',
+  '--s-pad-x':     'clamp(2px, calc(-1.33px + 0.278vw), 5px)',
+  '--s-pad-y':     'clamp(2px, calc(-1.33px + 0.278vw), 4px)',
+  '--s-inner-gap': 'clamp(1px, calc(-2.33px + 0.278vw), 3px)',
   /* chrome */
-  '--s-height':    'clamp(52px, calc(29.33px + 2.222vw), 72px)',
+  '--s-height':    'clamp(58px, calc(29.33px + 2.222vw), 72px)',
 };
 
 /* ── ToolBtn ─────────────────────────────────────────────────────────── */
@@ -376,7 +376,7 @@ export default function ViewerToolbar({
       role="toolbar"
       aria-label="Viewer Toolbar"
       style={{ ...(SCALE as React.CSSProperties), height: 'var(--s-height)' }}
-      className="flex items-center w-full bg-[#F7F8FA] border-b border-[#D9DCE3] select-none shrink-0 overflow-x-auto no-scrollbar touch-pan-x"
+      className="flex items-center w-full bg-[#F7F8FA] border-b border-[#D9DCE3] select-none shrink-0 overflow-x-auto no-scrollbar touch-pan-x scroll-smooth overscroll-x-contain"
     >
       {/* All groups share available width equally on desktop; on mobile/tablet smooth horizontal scrolling */}
       <div className="flex items-center flex-nowrap w-full h-full px-1 min-w-max md:min-w-0">
@@ -386,7 +386,7 @@ export default function ViewerToolbar({
           return (
             <React.Fragment key={g.title}>
               {/* ── group: flex-1 ensures equal width sharing on desktop, readable width on mobile ──── */}
-              <div className="relative flex flex-col items-center justify-center flex-1 min-w-[155px] md:min-w-0 overflow-visible">
+              <div className="relative flex flex-col items-center justify-center flex-1 min-w-[145px] sm:min-w-[155px] md:min-w-0 overflow-visible">
                 {/* buttons row */}
                 <div
                   className="flex items-center w-full overflow-visible"
@@ -420,7 +420,7 @@ export default function ViewerToolbar({
                       ref={menuRef}
                       className={[
                         'absolute top-[calc(var(--s-btn-h)+8px)] z-[100]',
-                        'min-w-[180px] bg-white border border-[#D9DCE3] rounded-lg',
+                        'min-w-[180px] max-w-[calc(100vw-24px)] max-h-[65vh] overflow-y-auto no-scrollbar bg-white border border-[#D9DCE3] rounded-lg',
                         'shadow-[0_8px_24px_rgba(0,0,0,0.15)] py-1 select-none',
                         gi >= 4 ? 'right-0' : 'left-0',
                       ].join(' ')}

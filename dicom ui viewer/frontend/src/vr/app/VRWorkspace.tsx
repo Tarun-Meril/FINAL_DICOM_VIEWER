@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore, type PanelId } from '@vr/state/store';
 import { Toolbar } from '@vr/components/Toolbar';
 import { StatusBar } from '@vr/components/StatusBar';
@@ -43,6 +43,11 @@ export interface VRWorkspaceProps {
 
 export function VRWorkspace({ studyUID, seriesUID, apiBase, onClose, variant = 'standalone' }: VRWorkspaceProps = {}): JSX.Element {
   const s = useAppStore();
+  const [mobilePanelOpen, setMobilePanelOpen] = useState<'left' | 'right' | null>(null);
+
+  const toggleMobilePanel = (panel: 'left' | 'right') => {
+    setMobilePanelOpen((curr) => (curr === panel ? null : panel));
+  };
 
   /* Keyboard shortcuts (§16). Configurable in a later iteration; documented in the README. */
   useEffect(() => {
@@ -83,12 +88,34 @@ export function VRWorkspace({ studyUID, seriesUID, apiBase, onClose, variant = '
 
   return (
     <div className="app">
-      <Toolbar onClose={onClose} variant={variant} />
+      <Toolbar
+        onClose={onClose}
+        variant={variant}
+        mobilePanelOpen={mobilePanelOpen}
+        onToggleMobilePanel={toggleMobilePanel}
+      />
       <div className="app-body">
-        <aside className="panel">
+        {/* Backdrop for mobile drawer */}
+        {mobilePanelOpen !== null && (
+          <div
+            className="vr-panel-backdrop"
+            onClick={() => setMobilePanelOpen(null)}
+            aria-label="Close drawer"
+          />
+        )}
+
+        <aside className="panel" data-mobile-open={mobilePanelOpen === 'left'}>
           <div className="panel-tabs">
             <button className="panel-tab" data-active={s.leftPanel === 'presets'} onClick={() => s.setLeftPanel('presets')}>Presets &amp; TF</button>
             <button className="panel-tab" data-active={s.leftPanel === 'transfer'} onClick={() => s.setLeftPanel('transfer')}>Material &amp; light</button>
+            <button
+              className="vr-mobile-close"
+              onClick={() => setMobilePanelOpen(null)}
+              title="Close panel"
+              aria-label="Close panel"
+            >
+              ✕
+            </button>
           </div>
           <div className="panel-body">
             <ErrorBoundary fallbackTitle="This panel could not be rendered.">
@@ -101,12 +128,20 @@ export function VRWorkspace({ studyUID, seriesUID, apiBase, onClose, variant = '
           <Viewport />
         </ErrorBoundary>
 
-        <aside className="panel right">
+        <aside className="panel right" data-mobile-open={mobilePanelOpen === 'right'}>
           <div className="panel-tabs">
             {RIGHT_TABS.map(([id, label]) => (
               <button key={id} className="panel-tab" data-active={s.activePanel === id}
                 onClick={() => s.setActivePanel(id)}>{label}</button>
             ))}
+            <button
+              className="vr-mobile-close"
+              onClick={() => setMobilePanelOpen(null)}
+              title="Close panel"
+              aria-label="Close panel"
+            >
+              ✕
+            </button>
           </div>
           <div className="panel-body">
             <ErrorBoundary fallbackTitle="This panel could not be rendered.">

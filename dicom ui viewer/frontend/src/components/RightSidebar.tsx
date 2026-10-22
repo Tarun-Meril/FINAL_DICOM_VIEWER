@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Tag, Activity, FileText, List, Sun, Sliders, Layers, Eye, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Tag, Activity, FileText, List, Sun, Sliders, Layers, Eye, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { clinicalFacade } from '../clinical';
 import ReportPanel from './report/ReportPanel';
 
@@ -7,10 +7,24 @@ interface RightSidebarProps {
   study?: any | null;
   activeStats?: any;
   on3DControlAction?: (action: string, payload?: any) => void;
+  onClose?: () => void;
 }
 
-export default function RightSidebar({ study, activeStats, on3DControlAction }: RightSidebarProps) {
+export default function RightSidebar({ study, activeStats, on3DControlAction, onClose }: RightSidebarProps) {
   const [activeTab, setActiveTab] = useState<'metadata' | 'reports'>('metadata');
+
+  // Mobile viewport detection (<768px)
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Collapse State
   const [width, setWidth] = useState(320);
@@ -50,18 +64,33 @@ export default function RightSidebar({ study, activeStats, on3DControlAction }: 
     }
   };
 
-  // 3D Clinical States - REMOVED
-
   return (
-    <div 
-      ref={sidebarRef}
-      style={{ width: `${width}px` }}
-      className="relative flex flex-col h-full bg-[#1F232A] border-l border-[#353C48] select-none text-[#C9D1D9] shrink-0 overflow-hidden transition-all duration-200 ease-in-out"
-      role="complementary"
-      aria-label="DICOM Metadata & Clinical Controls Sidebar"
-    >
-      {/* DRAGGABLE RESIZE HANDLE (Hidden when collapsed) */}
-      {!isCollapsed && (
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isMobile && !isCollapsed && (
+        <div 
+          onClick={() => {
+            if (onClose) onClose();
+            else handleCollapseToggle();
+          }}
+          className="fixed inset-0 bg-black/60 z-40 backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      <div 
+        ref={sidebarRef}
+        style={isMobile ? { width: isCollapsed ? '0px' : '85vw', maxWidth: '340px' } : { width: `${width}px` }}
+        className={`
+          ${isMobile 
+            ? `fixed inset-y-0 right-0 z-50 shadow-2xl transition-all duration-300 ${isCollapsed ? 'translate-x-full pointer-events-none' : 'translate-x-0'}` 
+            : 'relative shrink-0 transition-all duration-200'}
+          flex flex-col h-full bg-[#1F232A] border-l border-[#353C48] select-none text-[#C9D1D9] overflow-hidden
+        `}
+        role="complementary"
+        aria-label="DICOM Metadata & Clinical Controls Sidebar"
+      >
+      {/* DRAGGABLE RESIZE HANDLE (Hidden on mobile or when collapsed) */}
+      {!isCollapsed && !isMobile && (
         <div 
           onMouseDown={handleMouseDown}
           className="absolute left-0 top-0 w-[4px] h-full hover:bg-[#3B82F6]/70 cursor-col-resize z-40 transition-colors duration-150 active:bg-[#3B82F6]"
@@ -125,13 +154,16 @@ export default function RightSidebar({ study, activeStats, on3DControlAction }: 
               </button>
             </div>
 
-            {/* Collapse Trigger Button */}
+            {/* Collapse / Close Trigger Button */}
             <button
-              onClick={handleCollapseToggle}
-              title="Collapse Sidebar"
+              onClick={() => {
+                if (isMobile && onClose) onClose();
+                else handleCollapseToggle();
+              }}
+              title={isMobile ? "Close Sidebar" : "Collapse Sidebar"}
               className="flex items-center justify-center p-1 ml-1 rounded hover:bg-[#252B34] text-[#8B949E] hover:text-white cursor-pointer transition-subtle outline-none shrink-0"
             >
-              <ChevronRight className="w-4 h-4" />
+              {isMobile ? <X className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
           </div>
 
@@ -230,5 +262,6 @@ export default function RightSidebar({ study, activeStats, on3DControlAction }: 
         </div>
       )}
     </div>
+    </>
   );
 }

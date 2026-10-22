@@ -374,3 +374,41 @@ button:disabled { opacity: 0.4; cursor: default; }
    is preserved exactly. */
 .panel.hidden { visibility: hidden; pointer-events: none; }
 .dim { color: var(--text-dim); }
+
+/* Responsive adjustments for MPR on small mobile devices */
+@media (max-width: 767px) {
+  .merilview-mpr .toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px 6px;
+    height: 40px;
+  }
+  .merilview-mpr .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .merilview-mpr .toolbar .group {
+    padding-right: 4px;
+    margin-right: 2px;
+  }
+
+  .merilview-mpr .workspace.threeUp {
+    grid-template-areas: "axial" "coronal" "sagittal";
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+  }
+
+  .merilview-mpr .workspace.primaryAxial {
+    grid-template-areas: "axial" "coronal" "sagittal";
+    grid-template-columns: 1fr;
+    grid-template-rows: 1.2fr 1fr 1fr;
+  }
+
+  .merilview-mpr .workspace.grid {
+    grid-template-areas: "axial" "coronal" "sagittal";
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+  }
+}
+

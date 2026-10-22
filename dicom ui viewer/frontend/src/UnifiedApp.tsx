@@ -200,7 +200,7 @@ export default function UnifiedApp() {
   };
 
   return (
-    <div className="w-full h-full overflow-hidden select-none bg-[#070708]">
+    <div className="w-full h-full h-[100dvh] max-h-[100dvh] max-w-[100vw] overflow-hidden overflow-x-hidden select-none bg-[#070708]">
       {/* Startup Health Check Overlay */}
       {isInitializing && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#070708] text-white">

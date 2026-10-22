@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Settings, ChevronRight, X, Menu, FolderClosed } from 'lucide-react';
+import { Bell, Settings, ChevronRight, X, Menu, FolderClosed, ArrowLeft, Check, Moon, Sun, Tag } from 'lucide-react';
 import { API_BASE_URL, getSavedApiHost, setApiHost } from '../config';
 import logo from '../logo.png';
 
@@ -76,6 +76,7 @@ export default function ApplicationBar({
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuCategory, setMobileMenuCategory] = useState<string | null>(null);
 
   // Real PACS studies loaded state
   const [pacsStudiesList, setPacsStudiesList] = useState<any[]>([]);
@@ -897,15 +898,17 @@ export default function ApplicationBar({
       </div>
 
       {/* SECTION 3 - Global Controls */}
-      <div className="flex items-center gap-[12px] h-full no-drag-region shrink-0 pr-3 z-10">
+      <div className="flex items-center gap-[6px] sm:gap-[12px] h-full no-drag-region shrink-0 pr-2 sm:pr-3 z-10">
         
         {/* Layout Selector */}
         <div className="relative" ref={layoutRef}>
           <button 
             onClick={() => setShowLayoutMenu(!showLayoutMenu)}
-            className="flex items-center h-[24px] px-2 text-[12px] font-medium text-text-secondary hover:bg-hover-bg rounded-[4px] cursor-pointer transition-subtle no-drag-region"
+            className="flex items-center h-[24px] px-1.5 sm:px-2 text-[11px] sm:text-[12px] font-medium text-text-secondary hover:bg-hover-bg rounded-[4px] cursor-pointer transition-subtle no-drag-region"
           >
-            Layout <span className="ml-1 text-[9px]">▼</span>
+            <span className="hidden xs:inline">Layout</span>
+            <span className="xs:hidden font-mono text-[10px]">{layout.split(' ')[0]}</span>
+            <span className="ml-1 text-[8px] sm:text-[9px]">▼</span>
           </button>
           
           {showLayoutMenu && (
@@ -929,7 +932,7 @@ export default function ApplicationBar({
           )}
         </div>
 
-        {/* Cloudflare Tunnel Status / Connect Pill */}
+        {/* Cloudflare Tunnel Status / Connect Pill - Hidden on mobile, accessible in mobile menu */}
         <button
           type="button"
           onClick={() => {
@@ -937,22 +940,22 @@ export default function ApplicationBar({
             setShowCloudflareModal(true);
           }}
           title="Cloudflare Tunnel API Backend (Click to configure or test)"
-          className="flex items-center gap-1.5 h-[22px] px-2 text-[11px] font-mono rounded-[3px] bg-[#1E293B] border border-[#334155] text-[#93C5FD] hover:bg-[#2563EB] hover:text-white transition-colors cursor-pointer no-drag-region mr-1"
+          className="hidden md:flex items-center gap-1.5 h-[22px] px-2 text-[11px] font-mono rounded-[3px] bg-[#1E293B] border border-[#334155] text-[#93C5FD] hover:bg-[#2563EB] hover:text-white transition-colors cursor-pointer no-drag-region mr-1"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           <span>Cloudflare</span>
         </button>
 
-        {/* Notifications */}
+        {/* Notifications - Hidden on small mobile */}
         <button 
           title="Notifications"
-          className="flex items-center justify-center p-[6px] text-text-secondary hover:bg-[#2D2D2D] rounded-[4px] cursor-pointer transition-subtle no-drag-region"
+          className="hidden md:flex items-center justify-center p-[6px] text-text-secondary hover:bg-[#2D2D2D] rounded-[4px] cursor-pointer transition-subtle no-drag-region"
         >
           <Bell className="w-4 h-4 text-text-secondary" />
         </button>
 
-        {/* Settings */}
-        <div className="relative" ref={settingsRef}>
+        {/* Settings - Hidden on mobile, accessible in mobile menu */}
+        <div className="relative hidden sm:block" ref={settingsRef}>
           <button 
             title="Settings & Themes"
             onClick={() => setShowSettingsMenu(!showSettingsMenu)}
@@ -997,15 +1000,15 @@ export default function ApplicationBar({
         {/* User Profile */}
         <button 
           title="User Account"
-          className="flex items-center justify-center w-6 h-6 rounded-full bg-[#3B82F6] hover:brightness-105 cursor-pointer text-white font-sans text-[12px] font-semibold transition-subtle no-drag-region mr-2"
+          className="flex items-center justify-center w-6 h-6 rounded-full bg-[#3B82F6] hover:brightness-105 cursor-pointer text-white font-sans text-[11px] sm:text-[12px] font-semibold transition-subtle no-drag-region mr-1 sm:mr-2"
         >
           DR
         </button>
 
       </div>
 
-      {/* SECTION 4 - Window Controls (Far Right) */}
-      <div className="flex items-center h-full no-drag-region shrink-0">
+      {/* SECTION 4 - Window Controls (Far Right - Desktop Only) */}
+      <div className="hidden lg:flex items-center h-full no-drag-region shrink-0">
 
         {/* Minimize notification toast (browser-only fallback) */}
         {minimizeNotif && (
@@ -1058,8 +1061,8 @@ export default function ApplicationBar({
 
       {/* ABOUT MODAL */}
       {activeModal === 'about' && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-[2px] pointer-events-auto">
-          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-[400px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-[2px] pointer-events-auto p-4">
+          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-full max-w-sm sm:w-[400px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-4 py-3 bg-[#15181E] border-b border-[#353C48]">
               <span className="text-[14px] font-bold text-white uppercase tracking-wider">About MerilView</span>
               <button 
@@ -1098,8 +1101,8 @@ export default function ApplicationBar({
 
       {/* KEYBOARD SHORTCUTS MODAL */}
       {activeModal === 'shortcuts' && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-[2px] pointer-events-auto">
-          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-[460px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-[2px] pointer-events-auto p-4">
+          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-full max-w-lg sm:w-[460px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-4 py-3 bg-[#15181E] border-b border-[#353C48]">
               <span className="text-[14px] font-bold text-white uppercase tracking-wider">Keyboard Shortcuts Guide</span>
               <button 
@@ -1163,8 +1166,8 @@ export default function ApplicationBar({
 
       {/* CLOUDFLARE TUNNEL CONFIGURATION MODAL */}
       {showCloudflareModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-[2px] pointer-events-auto">
-          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-[480px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150 p-5 flex flex-col gap-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-[2px] pointer-events-auto p-4">
+          <div className="bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-[0_12px_36px_rgba(0,0,0,0.6)] w-full max-w-lg sm:w-[480px] overflow-hidden text-left font-sans animate-in fade-in zoom-in-95 duration-150 p-4 sm:p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-[#353C48] pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-[14px] font-bold text-white uppercase tracking-wider">Cloudflare Tunnel Connection</span>
@@ -1254,47 +1257,230 @@ export default function ApplicationBar({
         </div>
       )}
 
-      {/* Mobile Menu Dropdown Panel */}
+      {/* MOBILE APPLICATION MENU DRAWER */}
       {mobileMenuOpen && (
-        <>
+        <div className="fixed inset-0 z-[9999] flex justify-end bg-black/60 backdrop-blur-xs select-none">
           <div 
-            onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-black/60 z-[998] md:hidden backdrop-blur-xs"
+            className="fixed inset-0"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setMobileMenuCategory(null);
+            }} 
           />
-          <div className="absolute top-[34px] left-2 right-2 max-h-[82vh] overflow-y-auto bg-[#1C1F26] border border-[#353C48] rounded-[6px] shadow-2xl p-3 z-[999] md:hidden text-white flex flex-col gap-3">
-            <div className="flex items-center justify-between pb-2 border-b border-[#353C48]">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-[#8B949E]">Application Menu</span>
-              <button 
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-1 rounded hover:bg-[#252B34] text-[#8B949E] hover:text-white"
+          <div className="relative w-full max-w-[320px] sm:max-w-[360px] h-full bg-[#181B22] border-l border-[#353C48] shadow-2xl flex flex-col z-10 overflow-hidden text-left font-sans animate-in slide-in-from-right duration-200">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-[#12151B] border-b border-[#353C48]">
+              {mobileMenuCategory ? (
+                <button
+                  onClick={() => setMobileMenuCategory(null)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#38bdf8] hover:text-white transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to Menu</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <img src={logo} alt="Meril Logo" style={{ height: '20px', width: 'auto' }} />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">MerilView</span>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setMobileMenuCategory(null);
+                }}
+                className="text-[#8B949E] hover:text-white p-1 rounded transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {menus.map((m) => (
-                <div key={m.name} className="flex flex-col gap-1 bg-[#14171C] p-2 rounded border border-[#252B34]">
-                  <span className="text-[11px] font-bold text-[#38bdf8] uppercase tracking-wider">{m.name}</span>
-                  <div className="flex flex-col gap-0.5 mt-1">
-                    {m.items.filter(it => it.type !== 'separator' && it.label).slice(0, 4).map((it, itemIdx) => (
+
+            {/* Drawer Body */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 no-scrollbar">
+              {!mobileMenuCategory ? (
+                <>
+                  {/* Quick Layout Grid */}
+                  <div className="flex flex-col gap-1.5 bg-[#1F232B] border border-[#2D3442] rounded-lg p-2.5">
+                    <span className="text-[10px] font-bold uppercase text-[#8B949E] tracking-wider">Viewport Layout</span>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1">
+                      {['1x1 Single', '1x2 Split', '2x2 Quad', '3x3 Matrix'].map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => {
+                            setLayout(opt);
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                            layout === opt ? 'bg-[#2563EB] text-white font-semibold' : 'bg-[#14171E] text-[#C9D1D9] hover:bg-[#282F3D]'
+                          }`}
+                        >
+                          <span>{opt}</span>
+                          {layout === opt && <Check className="w-3.5 h-3.5 text-white" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Workspace Panels */}
+                  <div className="flex flex-col gap-1.5 bg-[#1F232B] border border-[#2D3442] rounded-lg p-2.5">
+                    <span className="text-[10px] font-bold uppercase text-[#8B949E] tracking-wider">Workspace Panels</span>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1">
                       <button
-                        key={`${it.label}-${itemIdx}`}
-                        disabled={it.disabled}
                         onClick={() => {
-                          if (it.onClick) it.onClick();
+                          setLeftSidebarOpen(!leftSidebarOpen);
                           setMobileMenuOpen(false);
                         }}
-                        className="text-left text-[11px] py-1 px-1.5 rounded hover:bg-[#252B34] text-[#C9D1D9] hover:text-white truncate"
+                        className={`flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          leftSidebarOpen ? 'bg-[#2563EB] text-white' : 'bg-[#14171E] text-[#C9D1D9] hover:bg-[#282F3D]'
+                        }`}
                       >
-                        {it.label}
+                        <div className="flex items-center gap-1.5">
+                          <FolderClosed className="w-3.5 h-3.5 text-[#38bdf8]" />
+                          <span>Series List</span>
+                        </div>
+                        <span className="text-[10px] font-mono opacity-80">{leftSidebarOpen ? 'Open' : 'Closed'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setRightSidebarOpen(!rightSidebarOpen);
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          rightSidebarOpen ? 'bg-[#2563EB] text-white' : 'bg-[#14171E] text-[#C9D1D9] hover:bg-[#282F3D]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-[#a78bfa]" />
+                          <span>Metadata</span>
+                        </div>
+                        <span className="text-[10px] font-mono opacity-80">{rightSidebarOpen ? 'Open' : 'Closed'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Theme Mode Toggle */}
+                  <div className="flex flex-col gap-1.5 bg-[#1F232B] border border-[#2D3442] rounded-lg p-2.5">
+                    <span className="text-[10px] font-bold uppercase text-[#8B949E] tracking-wider">Appearance Theme</span>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1">
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          currentTheme === 'dark' ? 'bg-[#2563EB] text-white font-semibold' : 'bg-[#14171E] text-[#C9D1D9] hover:bg-[#282F3D]'
+                        }`}
+                      >
+                        <Moon className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Dark PACS</span>
+                      </button>
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          currentTheme === 'light' ? 'bg-[#2563EB] text-white font-semibold' : 'bg-[#14171E] text-[#C9D1D9] hover:bg-[#282F3D]'
+                        }`}
+                      >
+                        <Sun className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Light View</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Menu Categories Accordion/List */}
+                  <div className="flex flex-col gap-1 bg-[#1F232B] border border-[#2D3442] rounded-lg p-2">
+                    <span className="text-[10px] font-bold uppercase text-[#8B949E] tracking-wider px-1 pb-1">All Menus & Tools</span>
+                    {menus.map((m) => (
+                      <button
+                        key={m.name}
+                        onClick={() => setMobileMenuCategory(m.name)}
+                        className="flex items-center justify-between w-full px-2.5 py-2 rounded text-xs font-medium text-white hover:bg-[#282F3D] transition-colors cursor-pointer"
+                      >
+                        <span>{m.name} Menu</span>
+                        <ChevronRight className="w-4 h-4 text-[#8B949E]" />
                       </button>
                     ))}
                   </div>
+
+                  {/* Cloudflare Tunnel Status Button */}
+                  <button
+                    onClick={() => {
+                      setTunnelInput(getSavedApiHost());
+                      setShowCloudflareModal(true);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex items-center justify-between w-full p-2.5 rounded-lg bg-[#1F232B] border border-[#2D3442] text-xs font-medium text-[#93C5FD] hover:bg-[#282F3D] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span>Cloudflare Tunnel API</span>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-[#8B949E]" />
+                  </button>
+
+                  {/* About & Shortcuts */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => {
+                        setActiveModal('shortcuts');
+                        setMobileMenuOpen(false);
+                      }}
+                      className="flex items-center justify-center gap-1 p-2 rounded-lg bg-[#1F232B] border border-[#2D3442] text-xs text-[#C9D1D9] hover:text-white hover:bg-[#282F3D] cursor-pointer"
+                    >
+                      <span>Shortcuts</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveModal('about');
+                        setMobileMenuOpen(false);
+                      }}
+                      className="flex items-center justify-center gap-1 p-2 rounded-lg bg-[#1F232B] border border-[#2D3442] text-xs text-[#C9D1D9] hover:text-white hover:bg-[#282F3D] cursor-pointer"
+                    >
+                      <span>About</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* Category Sub-items view */
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase text-[#8B949E] tracking-wider pb-1 px-1">
+                    {mobileMenuCategory} Actions
+                  </span>
+                  {menus.find(m => m.name === mobileMenuCategory)?.items.map((item, idx) => {
+                    if (item.type === 'separator') {
+                      return <div key={`sep-${idx}`} className="h-[1px] bg-[#353C48] my-1" />;
+                    }
+                    return (
+                      <button
+                        key={`${item.label}-${idx}`}
+                        disabled={item.disabled}
+                        onClick={() => {
+                          if (!item.disabled && item.onClick) {
+                            item.onClick();
+                            setMobileMenuOpen(false);
+                            setMobileMenuCategory(null);
+                          }
+                        }}
+                        className={`flex items-center justify-between w-full p-2.5 rounded text-xs transition-colors text-left cursor-pointer ${
+                          item.disabled
+                            ? 'opacity-40 text-[#6B7280] pointer-events-none'
+                            : 'text-white hover:bg-[#282F3D]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-sm shrink-0">{item.icon || '•'}</span>
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {item.shortcut && (
+                          <span className="text-[10px] text-[#8B949E] font-mono shrink-0 pl-2">
+                            {item.shortcut}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
+              )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
     </div>

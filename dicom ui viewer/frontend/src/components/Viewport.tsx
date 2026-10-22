@@ -133,6 +133,12 @@ export default function Viewport({
   const currentWwRef = useRef<number>(400);
   const currentWcRef = useRef<number>(40);
   const currentZoomRef = useRef<number>(1);
+  const activeToolRef = useRef<string>(activeTool);
+  activeToolRef.current = activeTool;
+  const currentSliceRef = useRef<number>(currentSlice);
+  currentSliceRef.current = currentSlice;
+  const totalImagesRef = useRef<number>(totalImages);
+  totalImagesRef.current = totalImages;
 
 
   const baseData = useMemo(() => {
@@ -374,7 +380,11 @@ export default function Viewport({
       toolGroup = ToolGroupManager.createToolGroup(toolGroupId)!;
       // These tool names must match the global addTool() calls in initCornerstone.ts
       toolGroup.addTool('Pan');
-      toolGroup.addTool('Zoom');
+      toolGroup.addTool('Zoom', {
+        configuration: {
+          pinchToZoom: false,
+        }
+      });
       toolGroup.addTool('WindowLevel');
       toolGroup.addTool('StackScroll');
       toolGroup.addTool('Length');
@@ -457,6 +467,222 @@ export default function Viewport({
       });
     };
     element.addEventListener('wheel', handleWheel, { passive: false });
+
+    // ── Dedicated Mobile & Responsive Touch & Gesture Engine ──────────────
+    let touchStartDist = 0;
+    let touchStartMidX = 0;
+    let touchStartMidY = 0;
+    let touchStartCamera: { parallelScale: number; focalPoint: Types.Point3; position: Types.Point3 } | null = null;
+    let touchStartSingleY = 0;
+    let touchStartSlice = 1;
+    let lastTapTime = 0;
+    let isTouchInteracting = false;
+    let touchMode: 'pinch' | 'scroll' | 'zoom' | null = null;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const now = Date.now();
+      if (e.touches.length === 1 && now - lastTapTime < 300) {
+        // Double tap: reset zoom to fit
+        lastTapTime = 0;
+        const vp = getRenderingEngine(renderingEngineId)?.getViewport(viewportId) as Types.IStackViewport;
+        if (vp) {
+          vp.resetCamera();
+          vp.render();
+          setZoom(1);
+        }
+        e.preventDefault();
+        return;
+      }
+      lastTapTime = now;
+
+      const engine = getRenderingEngine(renderingEngineId);
+      const vp = engine?.getViewport(viewportId) as Types.IStackViewport;
+      if (!vp) return;
+
+      if (e.touches.length === 2) {
+        // 2-Finger Pinch to Zoom and Pan
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        touchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        touchStartMidX = (t1.clientX + t2.clientX) / 2;
+        touchStartMidY = (t1.clientY + t2.clientY) / 2;
+        const cam = vp.getCamera();
+        touchStartCamera = {
+          parallelScale: cam.parallelScale || 1,
+          focalPoint: [...(cam.focalPoint || [0, 0, 0])] as Types.Point3,
+          position: [...(cam.position || [0, 0, 0])] as Types.Point3,
+        };
+        touchMode = 'pinch';
+        isTouchInteracting = true;
+        e.preventDefault();
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        touchStartSingleY = t.clientY;
+        touchStartSlice = currentSliceRef.current;
+
+        const currentActive = activeToolRef.current;
+        if (currentActive === 'zoom') {
+          const cam = vp.getCamera();
+          touchStartCamera = {
+            parallelScale: cam.parallelScale || 1,
+            focalPoint: [...(cam.focalPoint || [0, 0, 0])] as Types.Point3,
+            position: [...(cam.position || [0, 0, 0])] as Types.Point3,
+          };
+          touchMode = 'zoom';
+          isTouchInteracting = true;
+          e.preventDefault();
+        } else if (currentActive === 'scroll') {
+          touchMode = 'scroll';
+          isTouchInteracting = true;
+          e.preventDefault();
+        } else {
+          touchMode = null;
+          isTouchInteracting = false;
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isTouchInteracting) return;
+      const engine = getRenderingEngine(renderingEngineId);
+      const vp = engine?.getViewport(viewportId) as Types.IStackViewport;
+      if (!vp) return;
+
+      if (e.touches.length === 2 && touchMode === 'pinch' && touchStartCamera) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (touchStartDist > 0 && currentDist > 0) {
+          const scaleFactor = currentDist / touchStartDist;
+          const newParallelScale = Math.max(0.01, touchStartCamera.parallelScale / scaleFactor);
+
+          const currentMidX = (t1.clientX + t2.clientX) / 2;
+          const currentMidY = (t1.clientY + t2.clientY) / 2;
+          const deltaX = currentMidX - touchStartMidX;
+          const deltaY = currentMidY - touchStartMidY;
+
+          const h = element.clientHeight || 512;
+          const worldPerPixel = (newParallelScale * 2) / h;
+          const deltaWorldX = -deltaX * worldPerPixel;
+          const deltaWorldY = deltaY * worldPerPixel;
+
+          vp.setCamera({
+            parallelScale: newParallelScale,
+            focalPoint: [
+              touchStartCamera.focalPoint[0] + deltaWorldX,
+              touchStartCamera.focalPoint[1] + deltaWorldY,
+              touchStartCamera.focalPoint[2],
+            ],
+            position: [
+              touchStartCamera.position[0] + deltaWorldX,
+              touchStartCamera.position[1] + deltaWorldY,
+              touchStartCamera.position[2],
+            ],
+          });
+          vp.render();
+
+          const currentRawZoom = vp.getZoom();
+          if (!isNaN(currentRawZoom) && currentRawZoom > 0) {
+            setZoom(Math.round(currentRawZoom * 100) / 100);
+          }
+        }
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const deltaY = t.clientY - touchStartSingleY;
+
+        if (touchMode === 'zoom' && touchStartCamera) {
+          e.preventDefault();
+          // Dragging up zooms in, dragging down zooms out
+          const scaleMultiplier = Math.exp(-deltaY * 0.008);
+          const newParallelScale = Math.max(0.01, touchStartCamera.parallelScale / scaleMultiplier);
+          vp.setCamera({ parallelScale: newParallelScale });
+          vp.render();
+          const currentRawZoom = vp.getZoom();
+          if (!isNaN(currentRawZoom) && currentRawZoom > 0) {
+            setZoom(Math.round(currentRawZoom * 100) / 100);
+          }
+        } else if (touchMode === 'scroll') {
+          e.preventDefault();
+          const sliceChange = Math.round(-deltaY / 10);
+          const targetSlice = Math.max(1, Math.min(totalImagesRef.current, touchStartSlice + sliceChange));
+          if (targetSlice !== currentSliceRef.current) {
+            const targetIndex = targetSlice - 1;
+            lastImageIndexRef.current = targetIndex;
+            isProgrammaticUpdateRef.current = true;
+            vp.setImageIdIndex(targetIndex).finally(() => {
+              setTimeout(() => {
+                isProgrammaticUpdateRef.current = false;
+              }, 40);
+            });
+            setCurrentSlice(targetSlice);
+          }
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        isTouchInteracting = false;
+        touchMode = null;
+        touchStartCamera = null;
+      } else if (e.touches.length === 1 && touchMode === 'pinch') {
+        isTouchInteracting = false;
+        touchMode = null;
+        touchStartCamera = null;
+      }
+    };
+
+    element.addEventListener('touchstart', handleTouchStart, { passive: false });
+    element.addEventListener('touchmove', handleTouchMove, { passive: false });
+    element.addEventListener('touchend', handleTouchEnd, { passive: false });
+    element.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+    // Mouse drag support for 'scroll' tool
+    let isMouseScrolling = false;
+    let mouseStartSlice = 1;
+    let mouseStartY = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if (activeToolRef.current === 'scroll') {
+        e.preventDefault();
+        e.stopPropagation();
+        isMouseScrolling = true;
+        mouseStartY = e.clientY;
+        mouseStartSlice = currentSliceRef.current;
+
+        const onMouseMove = (moveEvt: MouseEvent) => {
+          if (!isMouseScrolling) return;
+          const vp = getRenderingEngine(renderingEngineId)?.getViewport(viewportId) as Types.IStackViewport;
+          if (!vp) return;
+          const deltaY = moveEvt.clientY - mouseStartY;
+          const sliceChange = Math.round(-deltaY / 10);
+          const targetSlice = Math.max(1, Math.min(totalImagesRef.current, mouseStartSlice + sliceChange));
+          if (targetSlice !== currentSliceRef.current) {
+            const targetIndex = targetSlice - 1;
+            lastImageIndexRef.current = targetIndex;
+            isProgrammaticUpdateRef.current = true;
+            vp.setImageIdIndex(targetIndex).finally(() => {
+              setTimeout(() => {
+                isProgrammaticUpdateRef.current = false;
+              }, 40);
+            });
+            setCurrentSlice(targetSlice);
+          }
+        };
+
+        const onMouseUp = () => {
+          isMouseScrolling = false;
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      }
+    };
+    element.addEventListener('mousedown', handleMouseDown);
 
     // Sync slice index to local react state on stack new image events (RAF-throttled to break render feedback loops)
     let newImageRaf: number | null = null;
@@ -601,6 +827,11 @@ export default function Viewport({
       }
       resizeObserver.disconnect();
       element.removeEventListener('wheel', handleWheel);
+      element.removeEventListener('touchstart', handleTouchStart);
+      element.removeEventListener('touchmove', handleTouchMove);
+      element.removeEventListener('touchend', handleTouchEnd);
+      element.removeEventListener('touchcancel', handleTouchEnd);
+      element.removeEventListener('mousedown', handleMouseDown);
       element.removeEventListener(Enums.Events.STACK_NEW_IMAGE, onNewImage);
       element.removeEventListener(Enums.Events.CAMERA_MODIFIED, onCameraModified);
       element.removeEventListener(Enums.Events.VOI_MODIFIED, onCameraModified);
@@ -1235,6 +1466,43 @@ export default function Viewport({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Interactive Slice Scrollbar touch drag / scrubbing handler for mobile & tablets
+  const handleScrollbarTouchStart = (e: React.TouchEvent) => {
+    if (isEmpty || totalImages <= 1 || !scrollbarTrackRef.current) return;
+    e.stopPropagation();
+    setIsScrubbing(true);
+
+    const updateSliceFromTouch = (touchY: number) => {
+      if (!scrollbarTrackRef.current) return;
+      const rect = scrollbarTrackRef.current.getBoundingClientRect();
+      const relativeY = Math.max(0, Math.min(touchY - rect.top, rect.height));
+      const percentage = rect.height > 0 ? relativeY / rect.height : 0;
+      const targetSlice = Math.max(1, Math.min(totalImages, Math.round(percentage * (totalImages - 1)) + 1));
+      setCurrentSlice(targetSlice);
+    };
+
+    if (e.touches[0]) {
+      updateSliceFromTouch(e.touches[0].clientY);
+    }
+
+    const handleTouchMove = (moveEvt: TouchEvent) => {
+      if (moveEvt.touches[0]) {
+        updateSliceFromTouch(moveEvt.touches[0].clientY);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      setIsScrubbing(false);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+    };
+
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchEnd);
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -1305,14 +1573,25 @@ export default function Viewport({
           setZoom(1);
           if (viewport) {
             viewport.resetCamera();
+            viewport.render();
           }
           break;
-        case 'zoomIn':
-          setZoom(prev => Math.min(10, Math.round(prev * 1.15 * 100) / 100));
+        case 'zoomIn': {
+          const currentZ = viewport.getZoom() || 1;
+          const nextZ = Math.min(10, currentZ * 1.25);
+          viewport.setZoom(nextZ);
+          viewport.render();
+          setZoom(Math.round(nextZ * 100) / 100);
           break;
-        case 'zoomOut':
-          setZoom(prev => Math.max(0.2, Math.round((prev / 1.15) * 100) / 100));
+        }
+        case 'zoomOut': {
+          const currentZ = viewport.getZoom() || 1;
+          const nextZ = Math.max(0.1, currentZ / 1.25);
+          viewport.setZoom(nextZ);
+          viewport.render();
+          setZoom(Math.round(nextZ * 100) / 100);
           break;
+        }
         case 'deleteSelected':
           const selection = cornerstoneAnnotation.selection.getAnnotationsSelected();
           if (selection && selection.length > 0) {
@@ -1478,24 +1757,28 @@ export default function Viewport({
         <div
           ref={scrollbarTrackRef}
           onMouseDown={handleScrollbarMouseDown}
+          onTouchStart={handleScrollbarTouchStart}
           onMouseEnter={() => setShowScrollTooltip(true)}
           onMouseLeave={() => setShowScrollTooltip(false)}
-          className="absolute right-1.5 top-12 bottom-12 w-2.5 bg-white/10 hover:bg-white/20 active:bg-white/25 rounded-full z-20 cursor-pointer transition-colors group flex items-center justify-center select-none"
+          className="absolute right-0.5 sm:right-1.5 top-12 bottom-12 w-6 sm:w-3.5 z-20 cursor-pointer select-none touch-none flex items-center justify-center group"
           title={`Scrollbar: Slice ${currentSlice} of ${totalImages}`}
         >
-          {/* Scrollbar Thumb */}
-          <div
-            className={`absolute w-3.5 rounded-full transition-all duration-75 shadow-md ${isScrubbing ? 'bg-[#2E7DFF] scale-110' : 'bg-[#2E7DFF]/80 group-hover:bg-[#2E7DFF]'
-              }`}
-            style={{
-              height: `${thumbHeight}px`,
-              top: `calc(${thumbTopPercent}% - ${thumbTopOffset}px)`
-            }}
-          />
+          {/* Visual Track bar */}
+          <div className="w-1.5 sm:w-2.5 h-full bg-white/10 group-hover:bg-white/20 active:bg-white/25 rounded-full relative flex items-center justify-center">
+            {/* Scrollbar Thumb */}
+            <div
+              className={`absolute w-3 sm:w-3.5 rounded-full transition-all duration-75 shadow-md ${isScrubbing ? 'bg-[#2E7DFF] scale-110' : 'bg-[#2E7DFF]/80 group-hover:bg-[#2E7DFF]'
+                }`}
+              style={{
+                height: `${thumbHeight}px`,
+                top: `calc(${thumbTopPercent}% - ${thumbTopOffset}px)`
+              }}
+            />
+          </div>
 
           {/* Hover / Scrubbing Tooltip Badge */}
           {(showScrollTooltip || isScrubbing) && (
-            <div className="absolute right-5 bg-[#14181E]/95 border border-[#353C48] text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none z-30 tracking-wide">
+            <div className="absolute right-7 bg-[#14181E]/95 border border-[#353C48] text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none z-30 tracking-wide">
               {currentSlice} / {totalImages}
             </div>
           )}

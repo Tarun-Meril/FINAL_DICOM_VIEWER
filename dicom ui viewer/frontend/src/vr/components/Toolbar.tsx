@@ -12,9 +12,18 @@ export interface ToolbarProps {
   onClose?: () => void;
   /** 'embedded' trims the standalone wordmark to save vertical space. */
   variant?: 'embedded' | 'standalone';
+  /** Currently opened mobile drawer, if any. */
+  mobilePanelOpen?: 'left' | 'right' | null;
+  /** Toggle handler for mobile drawers. */
+  onToggleMobilePanel?: (panel: 'left' | 'right') => void;
 }
 
-export function Toolbar({ onClose, variant = 'standalone' }: ToolbarProps = {}): JSX.Element {
+export function Toolbar({
+  onClose,
+  variant = 'standalone',
+  mobilePanelOpen,
+  onToggleMobilePanel,
+}: ToolbarProps = {}): JSX.Element {
   const s = useAppStore();
   const session = getSession();
   const stateFileRef = useRef<HTMLInputElement>(null);
@@ -58,6 +67,26 @@ export function Toolbar({ onClose, variant = 'standalone' }: ToolbarProps = {}):
           <button className="tb-btn" onClick={onClose} title="Return to the 2D viewer">← Back to 2D</button>
         </div>
       )}
+
+      {/* Responsive drawer toggles for small screens (< 1024px) */}
+      <div className="tb-group vr-panel-toggles">
+        <button
+          className="tb-btn"
+          data-active={mobilePanelOpen === 'left'}
+          onClick={() => onToggleMobilePanel?.('left')}
+          title="Toggle Presets and Transfer Function panel"
+        >
+          🎨 Presets
+        </button>
+        <button
+          className="tb-btn"
+          data-active={mobilePanelOpen === 'right'}
+          onClick={() => onToggleMobilePanel?.('right')}
+          title="Toggle 3D Tools panel (Clip, Sculpt, Measure, etc.)"
+        >
+          🛠 Tools
+        </button>
+      </div>
 
       <div className="tb-group">
         <button className="tb-btn" data-active={s.tool === 'navigate'} onClick={() => s.setTool('navigate')}

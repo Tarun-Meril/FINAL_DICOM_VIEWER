@@ -1080,7 +1080,7 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
   }
 
     return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0A0A0A] font-sans transition-subtle">
+    <div className="flex flex-col h-full h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] overflow-hidden overflow-x-hidden bg-[#0A0A0A] font-sans transition-subtle">
       
       {/* Unified Application Bar (32px) */}
       <ApplicationBar 
@@ -1153,7 +1153,13 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
         />
 
         {/* DICOM Metadata Right Sidebar */}
-        {rightSidebarOpen && <RightSidebar study={pacsStudy} activeStats={activeStats} />}
+        {rightSidebarOpen && (
+          <RightSidebar 
+            study={pacsStudy} 
+            activeStats={activeStats} 
+            onClose={() => setRightSidebarOpen(false)} 
+          />
+        )}
       </div>
 
       {/* Workstation Status Bar (26px) */}

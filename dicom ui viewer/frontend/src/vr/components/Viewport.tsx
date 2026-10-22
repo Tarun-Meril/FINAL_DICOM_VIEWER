@@ -416,7 +416,7 @@ export function Viewport(): JSX.Element {
 
       {s.orientationCubeVisible && (
         <div style={{ position: 'absolute', right: 12, bottom: 12, pointerEvents: 'auto' }}>
-          <OrientationCube camera={camera} size={104} onPick={(label) => {
+          <OrientationCube camera={camera} size={size[0] < 600 ? 70 : 104} onPick={(label) => {
             const map = { L: 'left', R: 'right', A: 'anterior', P: 'posterior', S: 'superior', I: 'inferior' } as const;
             engineRef.current?.applyCameraPreset(map[label], s.parallelProjection);
             useAppStore.getState().setCameraPreset(map[label]);
