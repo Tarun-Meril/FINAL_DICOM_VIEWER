@@ -117,7 +117,10 @@ export function createToolGroup(viewportIds: string[], renderingEngineId: string
 
   // Persistent bindings that do not change with the active tool.
   group.setToolActive(PanTool.toolName, {
-    bindings: [{ mouseButton: MouseBindings.Auxiliary }],
+    bindings: [
+      { mouseButton: MouseBindings.Auxiliary },
+      { numTouchPoints: 2 },
+    ],
   });
   group.setToolActive(WindowLevelTool.toolName, {
     bindings: [{ mouseButton: MouseBindings.Secondary }],
@@ -156,11 +159,13 @@ export function setActiveTool(tool: MPRTool): void {
   }
 
   if (targetName) {
-    const bindings: Array<{ mouseButton: number }> = [
+    const bindings: any[] = [
       { mouseButton: MouseBindings.Primary },
+      { numTouchPoints: 1 },
     ];
     if (targetName === PanTool.toolName) {
       bindings.push({ mouseButton: MouseBindings.Auxiliary });
+      bindings.push({ numTouchPoints: 2 });
     }
     if (targetName === WindowLevelTool.toolName) {
       bindings.push({ mouseButton: MouseBindings.Secondary });

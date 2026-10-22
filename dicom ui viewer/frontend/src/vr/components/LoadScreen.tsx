@@ -192,19 +192,18 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
         return numA - numB;
       });
 
-      // On mobile, sample optimal subset of slices for smooth 60fps volume rendering and memory stability
+      // Preserve uniform slice spacing. For large datasets on mobile, use an integer stride
       let downloadInstances = instances;
-      if (isMobile && instances.length > 40) {
-        const sampleCount = 36;
-        const step = (instances.length - 1) / (sampleCount - 1);
-        downloadInstances = Array.from({ length: sampleCount }, (_, i) => instances[Math.round(i * step)]);
+      if (isMobile && instances.length > 250) {
+        const stride = Math.ceil(instances.length / 150);
+        downloadInstances = instances.filter((_, idx) => idx % stride === 0);
       }
 
       const total = downloadInstances.length;
       const payload: { path: string; buffer: ArrayBuffer }[] = new Array(total);
       let downloadedCount = 0;
 
-      const CONCURRENCY = isMobile ? 6 : 12;
+      const CONCURRENCY = isMobile ? 10 : 12;
       let currentIndex = 0;
 
       const worker = async () => {

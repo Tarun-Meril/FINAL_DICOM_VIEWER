@@ -219,7 +219,10 @@ export function MPRWorkspace({
 
     (async () => {
       try {
-      const prepared = prepareVolume(pendingGroup);
+      const prepared = prepareVolume(pendingGroup, {
+        allowMissingSlices: true,
+        allowIrregularSpacing: true,
+      });
       setGeometry(prepared.geometry);
       // Developer log — always written, never shown in clinical mode.
       console.info('[MPR geometry]\n' + describeGeometryForLog(prepared.geometry));

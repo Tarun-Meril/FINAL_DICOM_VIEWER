@@ -342,12 +342,13 @@ export async function loadStudyFromPacs(
       return numA - numB;
     });
 
-    // On mobile devices, downsample instances for instant 60fps responsiveness and memory safety
+    // Preserve uniform slice spacing to satisfy MPR spatial geometry requirements.
+    // If downsampling is ever required for massive datasets on low-memory mobile devices (> 300 slices),
+    // strictly use an integer stride to preserve constant inter-slice distance.
     let instances = rawInstances;
-    if (isMobile && rawInstances.length > 44) {
-      const targetCount = 40;
-      const step = (rawInstances.length - 1) / (targetCount - 1);
-      instances = Array.from({ length: targetCount }, (_, i) => rawInstances[Math.round(i * step)]);
+    if (isMobile && rawInstances.length > 300) {
+      const stride = Math.ceil(rawInstances.length / 200);
+      instances = rawInstances.filter((_, idx) => idx % stride === 0);
     }
 
     const total = instances.length;
@@ -355,7 +356,7 @@ export async function loadStudyFromPacs(
     let completed = 0;
 
     // 3. Concurrently fetch raw DICOM files
-    const CONCURRENCY = isMobile ? 6 : 8;
+    const CONCURRENCY = isMobile ? 10 : 12;
     let nextIdx = 0;
     let failedCount = 0;
 
@@ -455,6 +456,7 @@ export async function loadStudyFromPacs(
 
 export interface PrepareOptions {
   allowMissingSlices?: boolean;
+  allowIrregularSpacing?: boolean;
 }
 
 /**
@@ -470,7 +472,8 @@ export function prepareVolume(
   options: PrepareOptions = {},
 ): PreparedVolume {
   const geometry = buildSeriesGeometry(group.frames, {
-    allowMissingSlices: options.allowMissingSlices,
+    allowMissingSlices: options.allowMissingSlices ?? true,
+    allowIrregularSpacing: options.allowIrregularSpacing ?? true,
   });
 
   if (geometry.verdict === 'unsafe') {

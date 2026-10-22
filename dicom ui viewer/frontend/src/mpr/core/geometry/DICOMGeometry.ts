@@ -284,6 +284,11 @@ export interface BuildGeometryOptions {
    * allowed to build with a warning. When false it is refused.
    */
   allowMissingSlices?: boolean;
+  /**
+   * When true, irregular slice spacing is logged as a warning rather than
+   * a fatal error blocking reconstruction.
+   */
+  allowIrregularSpacing?: boolean;
 }
 
 /**
@@ -528,6 +533,7 @@ export function buildSeriesGeometry(
 
   if (!spacingAnalysis.regular) {
     const unsafe =
+      !options.allowIrregularSpacing &&
       spacingAnalysis.maxRelativeDeviation > tol.spacingUnsafeRelative;
     issues.push(
       issue(
