@@ -285,6 +285,11 @@ export function MPRWorkspace({
       viewportManager.setWindowLevel('all', wl);
       viewportManager.resetAllCameras(centre);
 
+      // On mobile screens (<768px), default to full-screen axial view so it doesn't get squeezed into tiny vertical rows
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        stateManager.maximise('axial');
+      }
+
       // The engine finishes attaching the volume asynchronously and may move
       // the cameras once more. Re-apply the reference point on the next frames
       // so the three planes are exactly coincident from the first image shown.

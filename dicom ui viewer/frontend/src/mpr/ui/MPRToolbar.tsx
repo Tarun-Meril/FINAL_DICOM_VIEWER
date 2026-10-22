@@ -78,6 +78,13 @@ export function MPRToolbar({
             {PLANE_LABELS[p][0] + PLANE_LABELS[p].slice(1).toLowerCase()}
           </button>
         ))}
+        <button
+          className={state.maximisedPlane === null ? 'active' : ''}
+          onClick={() => stateManager.maximise(null)}
+          title="Show all planes in multi-viewport layout"
+        >
+          All
+        </button>
         <select
           value={state.layout}
           onChange={(e) =>

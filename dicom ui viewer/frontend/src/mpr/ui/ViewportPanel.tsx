@@ -270,6 +270,182 @@ export function ViewportPanel({
     stateManager.maximise(state.maximisedPlane === plane ? null : plane);
   }, [plane, state.maximisedPlane, stateManager]);
 
+  // Touch gesture support: 1-finger crosshair/scroll/wl/pan, 2-finger pinch zoom & pan, double-tap maximize
+  const touchStateRef = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    lastDist: number;
+    lastTap: number;
+    isPinching: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    lastDist: 0,
+    lastTap: 0,
+    isPinching: false,
+  });
+
+  const onTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      onFocus(plane);
+      const ts = touchStateRef.current;
+      const now = Date.now();
+
+      // Double tap to maximize/restore
+      if (e.touches.length === 1 && now - ts.lastTap < 300) {
+        stateManager.maximise(state.maximisedPlane === plane ? null : plane);
+        ts.lastTap = 0;
+        return;
+      }
+      ts.lastTap = now;
+
+      if (e.touches.length === 1) {
+        ts.isPinching = false;
+        const t = e.touches[0];
+        ts.startX = t.clientX;
+        ts.startY = t.clientY;
+        ts.lastX = t.clientX;
+        ts.lastY = t.clientY;
+
+        if (state.activeTool === 'crosshair') {
+          const host = hostRef.current;
+          if (host && volume) {
+            const rect = host.getBoundingClientRect();
+            const world = viewportManager.canvasToWorld(plane, [
+              t.clientX - rect.left,
+              t.clientY - rect.top,
+            ]);
+            if (world) {
+              stateManager.setReferencePoint(
+                clampReferenceToVolume(world, volume.transform),
+                { rememberPrevious: true },
+              );
+            }
+          }
+        }
+      } else if (e.touches.length === 2) {
+        ts.isPinching = true;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        ts.lastDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        ts.lastX = (t1.clientX + t2.clientX) / 2;
+        ts.lastY = (t1.clientY + t2.clientY) / 2;
+      }
+    },
+    [onFocus, plane, state.activeTool, state.maximisedPlane, stateManager, viewportManager, volume],
+  );
+
+  const onTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      const ts = touchStateRef.current;
+      if (!volume) return;
+
+      if (e.touches.length === 1 && !ts.isPinching) {
+        const t = e.touches[0];
+        const dx = t.clientX - ts.lastX;
+        const dy = t.clientY - ts.lastY;
+        ts.lastX = t.clientX;
+        ts.lastY = t.clientY;
+
+        if (state.activeTool === 'crosshair') {
+          const host = hostRef.current;
+          if (host) {
+            const rect = host.getBoundingClientRect();
+            const world = viewportManager.canvasToWorld(plane, [
+              t.clientX - rect.left,
+              t.clientY - rect.top,
+            ]);
+            if (world) {
+              stateManager.setReferencePoint(
+                clampReferenceToVolume(world, volume.transform),
+              );
+            }
+          }
+        } else if (state.activeTool === 'windowLevel') {
+          const wl = viewportState.windowLevel;
+          stateManager.setWindowLevel(plane, {
+            width: Math.max(1, Math.round(wl.width + dx * 2)),
+            center: Math.round(wl.center - dy * 2),
+          });
+        } else if (state.activeTool === 'pan') {
+          const vp = viewportManager.getViewport(plane);
+          if (vp) {
+            const cam = vp.getCamera();
+            const currentFocal = (cam.focalPoint ?? [0, 0, 0]) as unknown as Vec3;
+            const currentPos = (cam.position ?? [0, 0, 0]) as unknown as Vec3;
+            const panSens = (cam.parallelScale || 100) / 200;
+            vp.setCamera({
+              ...cam,
+              focalPoint: [currentFocal[0] - dx * panSens, currentFocal[1] + dy * panSens, currentFocal[2]],
+              position: [currentPos[0] - dx * panSens, currentPos[1] + dy * panSens, currentPos[2]],
+            });
+            viewportManager.render();
+          }
+        } else if (state.activeTool === 'zoom') {
+          const factor = dy > 0 ? 1.04 : 0.96;
+          viewportManager.zoomViewport(plane, factor, state.linkViews);
+        } else {
+          // If dragging up/down in default mode, step slices smoothly!
+          const totalDy = t.clientY - ts.startY;
+          if (Math.abs(totalDy) > 20) {
+            const steps = totalDy > 0 ? 1 : -1;
+            ts.startY = t.clientY;
+            const next = stepReferencePoint(
+              plane,
+              state.referencePointWorld,
+              steps,
+              pitchMm,
+            );
+            stateManager.setReferencePoint(
+              clampReferenceToVolume(next, volume.transform),
+            );
+          }
+        }
+      } else if (e.touches.length === 2) {
+        // 2-finger pinch to zoom & pan
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        if (ts.lastDist > 0 && Math.abs(dist - ts.lastDist) > 2) {
+          const factor = ts.lastDist / dist;
+          viewportManager.zoomViewport(plane, factor, state.linkViews);
+        }
+        ts.lastDist = dist;
+
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+        const dx = midX - ts.lastX;
+        const dy = midY - ts.lastY;
+        ts.lastX = midX;
+        ts.lastY = midY;
+
+        const vp = viewportManager.getViewport(plane);
+        if (vp && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
+          const cam = vp.getCamera();
+          const currentFocal = (cam.focalPoint ?? [0, 0, 0]) as unknown as Vec3;
+          const currentPos = (cam.position ?? [0, 0, 0]) as unknown as Vec3;
+          const panSens = (cam.parallelScale || 100) / 200;
+          vp.setCamera({
+            ...cam,
+            focalPoint: [currentFocal[0] - dx * panSens, currentFocal[1] + dy * panSens, currentFocal[2]],
+            position: [currentPos[0] - dx * panSens, currentPos[1] + dy * panSens, currentPos[2]],
+          });
+          viewportManager.render();
+        }
+      }
+    },
+    [pitchMm, plane, state.activeTool, state.linkViews, state.referencePointWorld, stateManager, viewportManager, viewportState.windowLevel, volume],
+  );
+
+  const onTouchEnd = useCallback(() => {
+    touchStateRef.current.isPinching = false;
+    touchStateRef.current.lastDist = 0;
+  }, []);
+
   /* ------------------------------------------------------------ annotations */
 
   const basis = viewportManager.cameraBasis(plane);
@@ -296,6 +472,10 @@ export function ViewportPanel({
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onDoubleClick={onDoubleClick}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div
