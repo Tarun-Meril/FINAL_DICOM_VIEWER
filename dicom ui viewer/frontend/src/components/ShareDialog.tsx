@@ -679,7 +679,8 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
                       onClick={async () => {
                         const studyUid = study.studyInstanceUid || study.study_instance_uid;
                         const cleanCf = cloudflareUrl.trim().replace(/\/+$/, '');
-                        const directUrl = `${defaultCloudUrl}/#/viewer/${encodeURIComponent(studyUid)}${cleanCf ? `?apiHost=${encodeURIComponent(cleanCf)}` : ''}`;
+                        const isLocal = cleanCf.includes('127.0.0.1') || cleanCf.includes('localhost');
+                        const directUrl = `${defaultCloudUrl}/#/viewer/${encodeURIComponent(studyUid)}${cleanCf && !isLocal ? `?apiHost=${encodeURIComponent(cleanCf)}` : ''}`;
                         try {
                           await navigator.clipboard.writeText(directUrl);
                           showToast('Direct Study Link Copied');
