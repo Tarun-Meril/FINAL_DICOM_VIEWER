@@ -79,7 +79,7 @@ export default defineConfig({
   worker: {
     format: 'es'
   },
-  base: './',
+  base: process.env.ELECTRON_BUILD === 'true' ? './' : '/',
   server: {
     port: viewerConfig.port,
     host: '127.0.0.1',

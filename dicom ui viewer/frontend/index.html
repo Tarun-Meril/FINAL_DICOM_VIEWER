@@ -7,8 +7,21 @@
     <meta name="theme-color" content="#1e1e1e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>MerilView</title>
     <script>
+      function forceHardRefresh() {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('_v', Date.now().toString());
+          window.location.replace(url.toString());
+        } catch (_) {
+          window.location.reload();
+        }
+      }
+
       function showErrorOnScreen(title, details) {
         console.error(`[${title}]`, details);
         let container = document.getElementById('merilview-error-overlay');
@@ -18,7 +31,7 @@
           container.style.cssText = 'color:#ff5555; padding:16px 20px; font-size:13px; font-family:monospace; z-index:999999; position:fixed; bottom:24px; right:24px; background:#1e1e1e; border:1px solid #ff4444; border-radius:8px; max-width:600px; max-height:400px; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.7);';
           document.body ? document.body.appendChild(container) : document.documentElement.appendChild(container);
         }
-        container.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><h3 style="margin:0; font-size:14px; font-weight:bold; color:#ff6b6b;">' + title + '</h3><div style="display:flex; gap:6px;"><button onclick="window.location.reload()" style="background:#2563eb; border:none; color:#fff; cursor:pointer; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:bold;">Reload</button><button onclick="this.parentElement.parentElement.parentElement.remove()" style="background:#333; border:none; color:#eee; cursor:pointer; padding:3px 8px; border-radius:4px; font-size:12px;">Dismiss</button></div></div><div style="line-height:1.4; word-break:break-word;">' + details + '</div>';
+        container.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><h3 style="margin:0; font-size:14px; font-weight:bold; color:#ff6b6b;">' + title + '</h3><div style="display:flex; gap:6px;"><button onclick="forceHardRefresh()" style="background:#2563eb; border:none; color:#fff; cursor:pointer; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:bold;">Update App</button><button onclick="this.parentElement.parentElement.parentElement.remove()" style="background:#333; border:none; color:#eee; cursor:pointer; padding:3px 8px; border-radius:4px; font-size:12px;">Dismiss</button></div></div><div style="line-height:1.4; word-break:break-word;">' + details + '</div>';
       }
       
       window.onerror = function(msg, url, lineNo, columnNo, error) {
@@ -29,16 +42,23 @@
       window.addEventListener("unhandledrejection", function(event) {
         console.error('[Unhandled Rejection]', event.reason);
       });
+
+      window.addEventListener("vite:preloadError", function(event) {
+        event.preventDefault();
+        forceHardRefresh();
+      });
       
-      // Catch ES module load errors (which bypass window.onerror)
+      // Catch ES module load errors (which happen when a new deployment has updated script hashes)
       window.addEventListener('error', function(e) {
         if (e.target && e.target.tagName === 'SCRIPT') {
-          if (!window.__scriptRetryDone) {
-            window.__scriptRetryDone = true;
-            console.warn('[MerilView] Script load failed during dev build, auto-reloading in 1.5s...');
-            setTimeout(function() { window.location.reload(); }, 1500);
+          const key = 'merilview_reload_attempt';
+          const lastAttempt = parseInt(sessionStorage.getItem(key) || '0', 10);
+          if (Date.now() - lastAttempt > 6000) {
+            sessionStorage.setItem(key, Date.now().toString());
+            forceHardRefresh();
+            return;
           }
-          showErrorOnScreen('Script Load Error', '<b>Failed to load script:</b> ' + (e.target.src || "inline script: " + e.target.innerHTML));
+          showErrorOnScreen('New Version Available', 'A new version of MerilView was deployed. Tap <b>Update App</b> to load the latest release.');
         }
       }, true); // Use capture phase
     </script>
