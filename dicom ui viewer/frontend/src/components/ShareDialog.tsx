@@ -82,9 +82,10 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   });
   const [isEditingCustomHost, setIsEditingCustomHost] = useState<boolean>(false);
   const [cloudflareUrl, setCloudflareUrl] = useState<string>(() => {
-    return (typeof localStorage !== 'undefined'
+    const raw = (typeof localStorage !== 'undefined'
       ? localStorage.getItem('merilview_cloudflare_tunnel_url') || localStorage.getItem('merilview_api_host')
       : '') || '';
+    return (raw.includes('127.0.0.1') || raw.includes('localhost')) ? '' : raw;
   });
 
   // Keyboard Navigation: Focus Dialog on Mount
@@ -199,8 +200,10 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
     }
 
     const cleanCf = (cfUrl !== undefined ? cfUrl : cloudflareUrl).trim().replace(/\/+$/, '');
-    const apiParam = (mode === 'cloud' && cleanCf) ? `?apiHost=${encodeURIComponent(cleanCf)}` : '';
-    return `${base}/share/${token}${apiParam}`;
+    const isLocalAddress = cleanCf.includes('127.0.0.1') || cleanCf.includes('localhost');
+    // Only append apiHost if an actual public tunnel URL (e.g. trycloudflare.com) is provided
+    const apiParam = (mode === 'cloud' && cleanCf && !isLocalAddress) ? `?apiHost=${encodeURIComponent(cleanCf)}` : '';
+    return `${base}/#/share/${token}${apiParam}`;
   };
 
   const handleCloudflareUrlChange = async (url: string) => {
@@ -668,7 +671,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold text-[#8B949E] uppercase tracking-wider select-none">
-                    Secure Share Link ({hostMode === 'cloud' ? 'Netlify + Cloudflare' : hostMode})
+                    Secure Share Link ({hostMode === 'cloud' ? 'Netlify + Supabase Cloud 24/7' : hostMode})
                   </label>
                   {study && (
                     <button
