@@ -172,6 +172,21 @@ export default function App({ initialStudyUid, onNavigateToPacs }: AppProps = {}
                 sessionStorage.setItem('merilview_cloud_instances', JSON.stringify(sbRecord.instances_data));
               } catch (_) {}
             }
+            if (sbRecord.series_data && sbRecord.series_data.length > 0) {
+              try {
+                sessionStorage.setItem('merilview_cloud_series', JSON.stringify(sbRecord.series_data));
+              } catch (_) {}
+            }
+            if (sbRecord.study_data) {
+              try {
+                sessionStorage.setItem('merilview_cloud_study', JSON.stringify(sbRecord.study_data));
+              } catch (_) {}
+            }
+            if (sbRecord.study_uid) {
+              try {
+                sessionStorage.setItem('merilview_cloud_study_uid', sbRecord.study_uid);
+              } catch (_) {}
+            }
             logSupabaseAccess(token, sbRecord.study_uid, 'OPEN');
           }
         } catch (sbErr) {

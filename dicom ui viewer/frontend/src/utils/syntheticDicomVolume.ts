@@ -486,6 +486,8 @@ export interface GenerateVolumeOptions {
   studyDescription?: string;
   seriesDescription?: string;
   seriesNumber?: number | string;
+  rows?: number;
+  columns?: number;
 }
 
 /**
@@ -501,6 +503,8 @@ export function generateSyntheticVolumeFiles(
   const thickness = options?.sliceThickness ?? 1.25;
   const spacing = options?.spacing ?? thickness;
   const count = Math.max(16, sliceCount);
+  const rows = options?.rows ?? 256;
+  const columns = options?.columns ?? 256;
 
   for (let i = 0; i < count; i++) {
     const sliceZ = i * spacing;
@@ -516,8 +520,8 @@ export function generateSyntheticVolumeFiles(
       sliceIndex: i,
       sliceCount: count,
       sliceZ,
-      rows: 256,
-      columns: 256,
+      rows,
+      columns,
       sliceThickness: thickness,
       pixelSpacing: options?.pixelSpacing ?? '0.75\\0.75',
     });
@@ -542,6 +546,8 @@ export function generateSyntheticVolumeBuffers(
   const thickness = options?.sliceThickness ?? 1.25;
   const spacing = options?.spacing ?? thickness;
   const count = Math.max(16, sliceCount);
+  const rows = options?.rows ?? 256;
+  const columns = options?.columns ?? 256;
 
   for (let i = 0; i < count; i++) {
     const sliceZ = i * spacing;
@@ -557,8 +563,8 @@ export function generateSyntheticVolumeBuffers(
       sliceIndex: i,
       sliceCount: count,
       sliceZ,
-      rows: 256,
-      columns: 256,
+      rows,
+      columns,
       sliceThickness: thickness,
       pixelSpacing: options?.pixelSpacing ?? '0.75\\0.75',
     });
@@ -571,3 +577,4 @@ export function generateSyntheticVolumeBuffers(
 
   return items;
 }
+

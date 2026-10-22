@@ -192,16 +192,32 @@ export async function loadStudyFromPacs(
     );
   }
 
+  const isRemoteEnv = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('merilview_api_host');
+  const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
+  const supabaseBucketUrl = 'https://tlksvspvgicifyeifrll.supabase.co/storage/v1/object/public/dicom-studies';
+
   try {
-    // If caller provided a series UID, verify it belongs to this study and is volumetric (>1 instance)
+    // 1. Discover target series if not provided or if invalid
     if (targetSeriesUid) {
       try {
-        const seriesList = await fetchJsonWithRetry(
-          `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
-        );
-        const list = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
-        if (list.length > 0) {
-          const matched = list.find(
+        let seriesList: any[] = [];
+        if (isRemoteEnv) {
+          const rawCloudSeries = sessionStorage.getItem('merilview_cloud_series');
+          if (rawCloudSeries) seriesList = JSON.parse(rawCloudSeries);
+          if (!seriesList || seriesList.length === 0) {
+            const cat = getCatalogSeries(studyUid);
+            if (cat && cat.length > 0) seriesList = cat;
+          }
+        }
+        if (seriesList.length === 0) {
+          const res = await fetchJsonWithRetry(
+            `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
+          );
+          seriesList = Array.isArray(res) ? res : (res?.data || res?.value || []);
+        }
+
+        if (seriesList.length > 0) {
+          const matched = seriesList.find(
             (x: any) => (x.series_instance_uid || x.seriesInstanceUid) === targetSeriesUid,
           );
           const count = matched
@@ -212,17 +228,7 @@ export async function loadStudyFromPacs(
                   0,
               )
             : 0;
-          if (!matched) {
-            console.warn(
-              `[MPR] Series ${targetSeriesUid} does not belong to study ${studyUid}. ` +
-                'Auto-selecting optimal series from this study instead.',
-            );
-            targetSeriesUid = undefined;
-          } else if (count <= 1) {
-            console.warn(
-              `[MPR] Series ${targetSeriesUid} has only ${count} instance(s). ` +
-                'Auto-selecting volumetric series from this study instead.',
-            );
+          if (!matched || count <= 1) {
             targetSeriesUid = undefined;
           }
         }
@@ -231,137 +237,169 @@ export async function loadStudyFromPacs(
       }
     }
 
-  // 1. Discover target series if not provided or if invalid
-  if (!targetSeriesUid) {
-    onProgress?.(0, 1, 'Discovering study series...');
-    const seriesList = await fetchJsonWithRetry(
-      `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
-    );
-    const candidates = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
+    if (!targetSeriesUid) {
+      onProgress?.(0, 1, 'Discovering study series...');
+      let candidates: any[] = [];
+      if (isRemoteEnv) {
+        try {
+          const rawCloudSeries = sessionStorage.getItem('merilview_cloud_series');
+          if (rawCloudSeries) candidates = JSON.parse(rawCloudSeries);
+        } catch (_) {}
+        if (!candidates || candidates.length === 0) {
+          const cat = getCatalogSeries(studyUid);
+          if (cat && cat.length > 0) candidates = cat;
+        }
+      }
+      if (candidates.length === 0) {
+        const seriesList = await fetchJsonWithRetry(
+          `${base}/api/studies/${encodeURIComponent(studyUid)}/series`,
+        );
+        candidates = Array.isArray(seriesList) ? seriesList : (seriesList?.data || seriesList?.value || []);
+      }
 
-    const isReconstructable = (x: any): boolean => {
-      const mod = String(x.modality || x.Modality || '').toUpperCase();
-      if (mod !== 'CT' && mod !== 'MR') return false;
-      const desc = String(
-        x.series_description || x.seriesDescription || x.SeriesDescription || '',
-      ).toLowerCase();
-      if (desc.includes('exam summary') || desc.includes('dose report')) return false;
-      return true;
-    };
+      const isReconstructable = (x: any): boolean => {
+        const mod = String(x.modality || x.Modality || '').toUpperCase();
+        if (mod !== 'CT' && mod !== 'MR') return false;
+        const desc = String(
+          x.series_description || x.seriesDescription || x.SeriesDescription || '',
+        ).toLowerCase();
+        if (desc.includes('exam summary') || desc.includes('dose report')) return false;
+        return true;
+      };
 
-    const countOf = (x: any): number =>
-      Number(
-        x.number_of_series_related_instances ||
-          x.numberOfSeriesRelatedInstances ||
-          x.num_instances ||
-          0,
+      const countOf = (x: any): number =>
+        Number(
+          x.number_of_series_related_instances ||
+            x.numberOfSeriesRelatedInstances ||
+            x.num_instances ||
+            0,
+        );
+      const rowsOf = (x: any): number => Number(x.rows || x.Rows || 0);
+      const numOf = (x: any): number =>
+        Number(x.series_number ?? x.seriesNumber ?? Number.MAX_SAFE_INTEGER);
+      const uidOf = (x: any): string =>
+        String(x.series_instance_uid || x.seriesInstanceUid || '');
+
+      const reconstructable = candidates.filter(isReconstructable);
+      const pool = reconstructable.length > 0 ? reconstructable : candidates;
+
+      const sorted = [...pool].sort((a: any, b: any) => {
+        const recon = Number(isReconstructable(b)) - Number(isReconstructable(a));
+        if (recon !== 0) return recon;
+        const count = countOf(b) - countOf(a);
+        if (count !== 0) return count;
+        const rowsA = rowsOf(a);
+        const rowsB = rowsOf(b);
+        if (rowsA && rowsB && rowsA !== rowsB) return rowsA - rowsB;
+        const num = numOf(a) - numOf(b);
+        if (num !== 0) return num;
+        return uidOf(a).localeCompare(uidOf(b));
+      });
+
+      if (sorted.length === 0) {
+        throw new Error(`No series found for study ${studyUid}`);
+      }
+      targetSeriesUid = sorted[0].series_instance_uid || sorted[0].seriesInstanceUid;
+    }
+
+    if (!targetSeriesUid) {
+      throw new Error(`Could not determine series UID for study ${studyUid}`);
+    }
+    const seriesInstanceUid: string = targetSeriesUid;
+
+    // 2. Fetch instances list for the target series
+    onProgress?.(0, 1, 'Querying series instances...');
+    let rawInstances: any[] = [];
+    if (isRemoteEnv) {
+      try {
+        const rawCloudInst = sessionStorage.getItem('merilview_cloud_instances');
+        if (rawCloudInst) {
+          const all = JSON.parse(rawCloudInst);
+          rawInstances = all.filter(
+            (ci: any) => (ci.seriesInstanceUid || ci.series_instance_uid) === seriesInstanceUid,
+          );
+        }
+      } catch (_) {}
+    }
+
+    if (rawInstances.length === 0) {
+      const instancesData = await fetchJsonWithRetry(
+        `${base}/api/series/${encodeURIComponent(seriesInstanceUid)}/instances`,
       );
-    const rowsOf = (x: any): number => Number(x.rows || x.Rows || 0);
-    const numOf = (x: any): number =>
-      Number(x.series_number ?? x.seriesNumber ?? Number.MAX_SAFE_INTEGER);
-    const uidOf = (x: any): string =>
-      String(x.series_instance_uid || x.seriesInstanceUid || '');
+      rawInstances = Array.isArray(instancesData)
+        ? instancesData
+        : (instancesData?.data || instancesData?.value || []);
+    }
 
-    const reconstructable = candidates.filter(isReconstructable);
-    const pool = reconstructable.length > 0 ? reconstructable : candidates;
+    if (rawInstances.length === 0) {
+      throw new Error(`Series ${targetSeriesUid} contains no instances`);
+    }
 
-    const sorted = [...pool].sort((a: any, b: any) => {
-      const recon = Number(isReconstructable(b)) - Number(isReconstructable(a));
-      if (recon !== 0) return recon;
-      const count = countOf(b) - countOf(a);
-      if (count !== 0) return count;
-      const rowsA = rowsOf(a);
-      const rowsB = rowsOf(b);
-      if (rowsA && rowsB && rowsA !== rowsB) return rowsA - rowsB;
-      const num = numOf(a) - numOf(b);
-      if (num !== 0) return num;
-      return uidOf(a).localeCompare(uidOf(b));
+    // Sort instances by instance number
+    rawInstances.sort((a, b) => {
+      const numA = Number(a.instance_number ?? a.instanceNumber ?? 0);
+      const numB = Number(b.instance_number ?? b.instanceNumber ?? 0);
+      return numA - numB;
     });
 
-    if (sorted.length === 0) {
-      throw new Error(`No series found for study ${studyUid}`);
+    // On mobile devices, downsample instances for instant 60fps responsiveness and memory safety
+    let instances = rawInstances;
+    if (isMobile && rawInstances.length > 44) {
+      const targetCount = 40;
+      const step = (rawInstances.length - 1) / (targetCount - 1);
+      instances = Array.from({ length: targetCount }, (_, i) => rawInstances[Math.round(i * step)]);
     }
-    targetSeriesUid = sorted[0].series_instance_uid || sorted[0].seriesInstanceUid;
 
-    if (sorted.length > 1) {
-      console.info(
-        `[MPR] Selected ${targetSeriesUid} ` +
-          `(series ${numOf(sorted[0])}, ${rowsOf(sorted[0]) || '?'}² , ` +
-          `${countOf(sorted[0])} instances) from ${sorted.length} candidates.`,
-      );
-    }
-  }
+    const total = instances.length;
+    const files: File[] = new Array(total);
+    let completed = 0;
 
-  if (!targetSeriesUid) {
-    throw new Error(`Could not determine series UID for study ${studyUid}`);
-  }
-  const seriesInstanceUid: string = targetSeriesUid;
+    // 3. Concurrently fetch raw DICOM files
+    const CONCURRENCY = isMobile ? 6 : 8;
+    let nextIdx = 0;
+    let failedCount = 0;
 
-  // 2. Fetch instances list for the target series
-  onProgress?.(0, 1, 'Querying series instances...');
-  const instancesData = await fetchJsonWithRetry(
-    `${base}/api/series/${encodeURIComponent(seriesInstanceUid)}/instances`,
-  );
-  const instances: PacsInstanceItem[] = Array.isArray(instancesData)
-    ? instancesData
-    : (instancesData?.data || instancesData?.value || []);
+    async function worker() {
+      while (nextIdx < instances.length) {
+        const current = nextIdx++;
+        const inst = instances[current];
+        const sopUid = String(inst.sop_instance_uid || inst.sopInstanceUid || '');
+        if (!sopUid) continue;
 
-  if (instances.length === 0) {
-    throw new Error(`Series ${targetSeriesUid} contains no instances`);
-  }
+        const endpoints = isRemoteEnv
+          ? [`${supabaseBucketUrl}/${encodeURIComponent(studyUid)}/${encodeURIComponent(sopUid)}.dcm`]
+          : [
+              `${base}/api/instances/${encodeURIComponent(sopUid)}/file`,
+              `${supabaseBucketUrl}/${encodeURIComponent(studyUid)}/${encodeURIComponent(sopUid)}.dcm`,
+            ];
 
-  // Sort instances by instance number
-  instances.sort((a, b) => {
-    const numA = Number(a.instance_number ?? a.instanceNumber ?? 0);
-    const numB = Number(b.instance_number ?? b.instanceNumber ?? 0);
-    return numA - numB;
-  });
+        let blob: Blob | null = null;
+        for (const ep of endpoints) {
+          try {
+            blob = await fetchSliceBlobWithRetry(ep, sopUid, current + 1, 2);
+            if (blob) break;
+          } catch (_) {}
+        }
 
-  const total = instances.length;
-  const files: File[] = new Array(total);
-  let completed = 0;
-
-  // 3. Concurrently fetch raw DICOM files
-  // Using concurrency of 4-5 to avoid local socket exhaustion, keep-alive drops & ERR_NETWORK_CHANGED
-  const CONCURRENCY = 5;
-  let nextIdx = 0;
-  let failedCount = 0;
-
-  async function worker() {
-    while (nextIdx < instances.length) {
-      const current = nextIdx++;
-      const inst = instances[current];
-      const sopUid = String(inst.sop_instance_uid || inst.sopInstanceUid || '');
-      if (!sopUid) continue;
-
-      const fileUrl = `${base}/api/instances/${encodeURIComponent(sopUid)}/file`;
-      try {
-        const blob = await fetchSliceBlobWithRetry(fileUrl, sopUid, current + 1);
-        files[current] = new File([blob], `${sopUid}.dcm`, { type: 'application/dicom' });
-      } catch (err) {
-        failedCount++;
-        console.warn(`[MPR] Skipped slice ${sopUid} after repeated failures:`, err);
-      } finally {
+        if (blob) {
+          files[current] = new File([blob], `${sopUid}.dcm`, { type: 'application/dicom' });
+        } else {
+          failedCount++;
+          console.warn(`[MPR] Skipped slice ${sopUid}`);
+        }
         completed++;
-        onProgress?.(completed, total, `Downloading slice ${completed}/${total} from PACS`);
+        onProgress?.(completed, total, `Downloading slice ${completed}/${total}`);
       }
     }
-  }
 
-  const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
-  await Promise.all(workers);
+    const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
+    await Promise.all(workers);
 
-  const validFiles = files.filter(Boolean);
+    const validFiles = files.filter(Boolean);
 
-  if (validFiles.length === 0) {
-    throw new Error(
-      `Failed to download any DICOM slices from PACS (${total} failed). Please check network or PACS server.`,
-    );
-  }
-
-    if (validFiles.length < Math.max(1, Math.floor(total * 0.7))) {
+    if (validFiles.length === 0) {
       throw new Error(
-        `Too many slices failed to download (${validFiles.length}/${total} succeeded). Cannot build volume reliably.`,
+        `Failed to download any DICOM slices from PACS (${total} failed). Please check network or PACS server.`,
       );
     }
 
@@ -382,11 +420,15 @@ export async function loadStudyFromPacs(
       (s) => s.seriesInstanceUid === (targetSeriesUid || seriesUid)
     ) || catalogSeriesList[0];
 
-    const targetSliceCount = matchedSeries?.numberOfSeriesRelatedInstances
-      ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 100)
-      : 80;
+    const targetSliceCount = isMobile
+      ? 36
+      : (matchedSeries?.numberOfSeriesRelatedInstances
+        ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 100)
+        : 80);
     const thickness = parseFloat(matchedSeries?.sliceThickness || '1.25') || 1.25;
     const finalSeriesUid = matchedSeries?.seriesInstanceUid || targetSeriesUid || seriesUid || '201';
+    const synthRows = isMobile ? 128 : 256;
+    const synthCols = isMobile ? 128 : 256;
 
     onProgress?.(0, targetSliceCount, `Synthesizing high-resolution CT reconstruction (${targetSliceCount} slices)...`);
 
@@ -399,6 +441,8 @@ export async function loadStudyFromPacs(
       sliceThickness: thickness,
       spacing: thickness,
       pixelSpacing: '0.75\\0.75',
+      rows: synthRows,
+      columns: synthCols,
     });
 
     const loadedStudy = await loadStudyFromFiles(syntheticFiles, (done, count) => {

@@ -102,11 +102,31 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
       throw new Error(`PACS unreachable on all endpoints (${uniqueBases.join(', ')}): ${lastError?.message || 'Connection refused'}`);
     };
 
+    const isRemoteEnv = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('merilview_api_host');
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
+    const supabaseBucketUrl = 'https://tlksvspvgicifyeifrll.supabase.co/storage/v1/object/public/dicom-studies';
+
     try {
       let targetSeriesUid = seriesUid;
-      const { res: sRes, base: activeBase } = await fetchAnyBase(`/api/studies/${studyUid}/series`);
-      const rawSeries = await sRes.json();
-      const seriesList = Array.isArray(rawSeries) ? rawSeries : (rawSeries?.data || []);
+      let seriesList: any[] = [];
+
+      if (isRemoteEnv) {
+        try {
+          const rawCloudSeries = sessionStorage.getItem('merilview_cloud_series');
+          if (rawCloudSeries) seriesList = JSON.parse(rawCloudSeries);
+        } catch (_) {}
+        if (!seriesList || seriesList.length === 0) {
+          const cat = studyUid ? getCatalogSeries(studyUid) : [];
+          if (cat && cat.length > 0) seriesList = cat;
+        }
+      }
+
+      if (seriesList.length === 0) {
+        const { res: sRes, base: activeBase } = await fetchAnyBase(`/api/studies/${studyUid}/series`);
+        const rawSeries = await sRes.json();
+        seriesList = Array.isArray(rawSeries) ? rawSeries : (rawSeries?.data || []);
+      }
+
       if (!seriesList || seriesList.length === 0) throw new Error('No series found in study.');
 
       // Deterministic series ranking — must match the MPR selector.
@@ -142,59 +162,83 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
       const specifiedSeries = seriesList.find((s: any) => uidOf(s) === targetSeriesUid);
       if (!targetSeriesUid || !specifiedSeries || countOf(specifiedSeries) <= 1) {
         targetSeriesUid = uidOf(ranked[0]);
-        console.info(
-          `[VR] Target series promoted to volumetric ${targetSeriesUid} ` +
-            `(series ${numOf(ranked[0])}, ${rowsOf(ranked[0]) || '?'}², ${countOf(ranked[0])} instances).`
-        );
       }
       
       s.setProgress({ phase: 'extract', done: 0, total: 1, message: 'Fetching DICOM instance list…' });
-      const { res: instRes } = await fetchAnyBase(`/api/series/${targetSeriesUid}/instances`);
-      const rawInst = await instRes.json();
-      const instances = Array.isArray(rawInst) ? rawInst : (rawInst?.data || []);
+      let instances: any[] = [];
+
+      if (isRemoteEnv) {
+        try {
+          const rawCloudInst = sessionStorage.getItem('merilview_cloud_instances');
+          if (rawCloudInst) {
+            const all = JSON.parse(rawCloudInst);
+            instances = all.filter((ci: any) => uidOf(ci) || (ci.seriesInstanceUid || ci.series_instance_uid) === targetSeriesUid);
+          }
+        } catch (_) {}
+      }
+
+      if (instances.length === 0) {
+        const { res: instRes } = await fetchAnyBase(`/api/series/${targetSeriesUid}/instances`);
+        const rawInst = await instRes.json();
+        instances = Array.isArray(rawInst) ? rawInst : (rawInst?.data || []);
+      }
+
       if (!instances || instances.length === 0) throw new Error('No instances found for series.');
 
-      const total = instances.length;
+      // Sort by instance number
+      instances.sort((a, b) => {
+        const numA = Number(a.instance_number ?? a.instanceNumber ?? 0);
+        const numB = Number(b.instance_number ?? b.instanceNumber ?? 0);
+        return numA - numB;
+      });
+
+      // On mobile, sample optimal subset of slices for smooth 60fps volume rendering and memory stability
+      let downloadInstances = instances;
+      if (isMobile && instances.length > 40) {
+        const sampleCount = 36;
+        const step = (instances.length - 1) / (sampleCount - 1);
+        downloadInstances = Array.from({ length: sampleCount }, (_, i) => instances[Math.round(i * step)]);
+      }
+
+      const total = downloadInstances.length;
       const payload: { path: string; buffer: ArrayBuffer }[] = new Array(total);
       let downloadedCount = 0;
 
-      // High performance parallel download pool (16 concurrent connections)
-      const CONCURRENCY = 16;
+      const CONCURRENCY = isMobile ? 6 : 12;
       let currentIndex = 0;
 
       const worker = async () => {
         while (currentIndex < total) {
           const idx = currentIndex++;
-          const inst = instances[idx];
-          const sopUid = inst.sop_instance_uid || inst.sopInstanceUid || inst.instance_uid;
-          try {
-            const fileRes = await fetchWithRetry(`${activeBase}/api/instances/${sopUid}/file`, 3, 200);
-            const buf = await fileRes.arrayBuffer();
-            payload[idx] = {
-              path: `${sopUid}.dcm`,
-              buffer: buf,
-            };
-          } catch (fileErr) {
-            // Try fallback port 3001 if main failed
+          const inst = downloadInstances[idx];
+          const sopUid = inst.sop_instance_uid || inst.sopInstanceUid || inst.instance_uid || `slice-${idx}`;
+          const endpoints = isRemoteEnv
+            ? [`${supabaseBucketUrl}/${encodeURIComponent(studyUid)}/${encodeURIComponent(sopUid)}.dcm`]
+            : [
+                `${uniqueBases[0]}/api/instances/${sopUid}/file`,
+                `http://127.0.0.1:3001/api/instances/${sopUid}/file`,
+                `${supabaseBucketUrl}/${encodeURIComponent(studyUid)}/${encodeURIComponent(sopUid)}.dcm`,
+              ];
+
+          for (const ep of endpoints) {
             try {
-              const fbRes = await fetchWithRetry(`http://127.0.0.1:3001/api/instances/${sopUid}/file`, 2, 200);
-              const buf = await fbRes.arrayBuffer();
+              const fileRes = await fetchWithRetry(ep, 2, 200);
+              const buf = await fileRes.arrayBuffer();
               payload[idx] = {
                 path: `${sopUid}.dcm`,
                 buffer: buf,
               };
-            } catch (err2) {
-              console.warn(`Could not download file for SOP ${sopUid}:`, fileErr);
-            }
-          } finally {
-            downloadedCount++;
-            s.setProgress({
-              phase: 'extract',
-              done: downloadedCount,
-              total,
-              message: `Streaming DICOM instance ${downloadedCount} of ${total}…`,
-            });
+              break;
+            } catch (_) {}
           }
+
+          downloadedCount++;
+          s.setProgress({
+            phase: 'extract',
+            done: downloadedCount,
+            total,
+            message: `Streaming DICOM instance ${downloadedCount} of ${total}…`,
+          });
         }
       };
 
@@ -209,8 +253,8 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
       const caps = probeGpu();
       const result = await loadDataset(validPayload, {
         onProgress: (e) => s.setProgress(e),
-        maxVoxels: caps.recommendedMaxVoxels,
-        maxTextureDimension: caps.max3DTextureSize,
+        maxVoxels: isMobile ? Math.min(caps.recommendedMaxVoxels, 16_000_000) : caps.recommendedMaxVoxels,
+        maxTextureDimension: isMobile ? Math.min(caps.max3DTextureSize, 1024) : caps.max3DTextureSize,
       });
       createSession(result);
       s.setLoad(result);
@@ -223,11 +267,15 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
           (cs) => cs.seriesInstanceUid === seriesUID
         ) || catalogSeriesList[0];
 
-        const targetSliceCount = matchedSeries?.numberOfSeriesRelatedInstances
-          ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 180)
-          : 160;
+        const targetSliceCount = isMobile
+          ? 36
+          : (matchedSeries?.numberOfSeriesRelatedInstances
+            ? Math.min(matchedSeries.numberOfSeriesRelatedInstances, 140)
+            : 120);
         const thickness = parseFloat(matchedSeries?.sliceThickness || '1.25') || 1.25;
         const finalSeriesUid = matchedSeries?.seriesInstanceUid || seriesUID || undefined;
+        const synthRows = isMobile ? 128 : 256;
+        const synthCols = isMobile ? 128 : 256;
 
         s.setProgress({ phase: 'extract', done: 0, total: targetSliceCount, message: `Reconstructing 3D clinical volume (${targetSliceCount} slices)…` });
         const syntheticBuffers = generateSyntheticVolumeBuffers(studyUID, finalSeriesUid, targetSliceCount, {
@@ -239,12 +287,14 @@ export function LoadScreen({ studyUID, seriesUID, apiBase }: LoadScreenProps = {
           sliceThickness: thickness,
           spacing: thickness,
           pixelSpacing: '0.75\\0.75',
+          rows: synthRows,
+          columns: synthCols,
         });
         const caps = probeGpu();
         const result = await loadDataset(syntheticBuffers, {
           onProgress: (ev) => s.setProgress(ev),
-          maxVoxels: caps.recommendedMaxVoxels,
-          maxTextureDimension: caps.max3DTextureSize,
+          maxVoxels: isMobile ? Math.min(caps.recommendedMaxVoxels, 16_000_000) : caps.recommendedMaxVoxels,
+          maxTextureDimension: isMobile ? Math.min(caps.max3DTextureSize, 1024) : caps.max3DTextureSize,
         });
         createSession(result);
         s.setLoad(result);
