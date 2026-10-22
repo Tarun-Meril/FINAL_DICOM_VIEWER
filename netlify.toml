@@ -9,6 +9,12 @@
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
   PUPPETEER_SKIP_DOWNLOAD = "1"
 
+# Nonexistent assets should 404 instead of falling back to index.html
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 404
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

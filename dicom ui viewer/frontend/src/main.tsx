@@ -84,9 +84,19 @@ function renderApp(node: React.ReactNode) {
 async function bootstrap() {
   try {
     if (isStandaloneVRRoute()) {
-      // VR renders with VTK.js and its own DICOM ingest; it does not need the
-      // Cornerstone engine, so nothing is initialised here.
-      const { default: StandaloneVRPage } = await import('./components/vr/StandaloneVRPage');
+      let vrMod: any = null;
+      try {
+        vrMod = await import('./components/vr/StandaloneVRPage');
+      } catch (err) {
+        console.warn('[MerilView] VR module load failed, reloading...', err);
+        window.location.reload();
+        return;
+      }
+      const StandaloneVRPage = vrMod?.default || vrMod;
+      if (!StandaloneVRPage) {
+        window.location.reload();
+        return;
+      }
       renderApp(
         <ErrorBoundary>
           <StandaloneVRPage />
@@ -96,7 +106,19 @@ async function bootstrap() {
     }
 
     if (isStandaloneMPRRoute()) {
-      const { default: StandaloneMPRPage } = await import('./components/mpr/StandaloneMPRPage');
+      let mprMod: any = null;
+      try {
+        mprMod = await import('./components/mpr/StandaloneMPRPage');
+      } catch (err) {
+        console.warn('[MerilView] MPR module load failed, reloading...', err);
+        window.location.reload();
+        return;
+      }
+      const StandaloneMPRPage = mprMod?.default || mprMod;
+      if (!StandaloneMPRPage) {
+        window.location.reload();
+        return;
+      }
       renderApp(
         <ErrorBoundary>
           <StandaloneMPRPage />
@@ -105,8 +127,31 @@ async function bootstrap() {
       return;
     }
 
-    // Dynamically import UnifiedApp (which bundles PACS Study Browser and DICOM Viewer)
-    const { default: UnifiedApp } = await import('./UnifiedApp');
+    // Dynamically import UnifiedApp with fallback to auto-reload if stale cache chunk
+    let appModule: any = null;
+    try {
+      appModule = await import('./UnifiedApp');
+    } catch (importErr) {
+      console.warn('[MerilView] UnifiedApp chunk load failed, refreshing for latest release...', importErr);
+      const key = 'merilview_chunk_reload';
+      const last = parseInt(sessionStorage.getItem(key) || '0', 10);
+      if (Date.now() - last > 5000) {
+        sessionStorage.setItem(key, Date.now().toString());
+        const url = new URL(window.location.href);
+        url.searchParams.set('_v', Date.now().toString());
+        window.location.replace(url.toString());
+        return;
+      }
+      throw importErr;
+    }
+
+    const UnifiedApp = appModule?.default || appModule;
+    if (!UnifiedApp) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('_v', Date.now().toString());
+      window.location.replace(url.toString());
+      return;
+    }
 
     // Render React App
     renderApp(
@@ -132,7 +177,7 @@ async function bootstrap() {
           <div style="font-size:2rem">⚠️</div>
           <div style="font-size:1.1rem;color:#f87171;font-weight:bold">MerilView — Bootstrap Error</div>
           <div style="background:#131317;border:1px solid #3f3f46;border-radius:8px;padding:1rem;max-width:700px;width:100%;font-size:0.75rem;color:#a3e635;white-space:pre-wrap;word-break:break-all">${err.message}\n\n${err.stack || ''}</div>
-          <button onclick="window.location.reload()" style="margin-top:1rem;padding:0.5rem 1.5rem;background:#4f46e5;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem">Reload Page</button>
+          <button onclick="try{const u=new URL(window.location.href);u.searchParams.set('_v',Date.now().toString());window.location.replace(u.toString());}catch(_){window.location.reload();}" style="margin-top:1rem;padding:0.5rem 1.5rem;background:#4f46e5;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem">Reload Page</button>
         </div>
       `;
     }

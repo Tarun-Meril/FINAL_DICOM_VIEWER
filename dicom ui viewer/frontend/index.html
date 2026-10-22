@@ -44,8 +44,13 @@
       });
 
       window.addEventListener("vite:preloadError", function(event) {
-        event.preventDefault();
-        forceHardRefresh();
+        console.warn('[Vite] Preload error detected, refreshing page with latest assets...');
+        const key = 'merilview_preload_reload';
+        const last = parseInt(sessionStorage.getItem(key) || '0', 10);
+        if (Date.now() - last > 5000) {
+          sessionStorage.setItem(key, Date.now().toString());
+          forceHardRefresh();
+        }
       });
       
       // Catch ES module load errors (which happen when a new deployment has updated script hashes)
