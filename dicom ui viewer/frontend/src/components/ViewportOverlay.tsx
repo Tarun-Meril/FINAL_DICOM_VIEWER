@@ -38,7 +38,6 @@ interface ViewportOverlayProps {
 
 export default function ViewportOverlay({ data, viewportNum, active, readOnly }: ViewportOverlayProps) {
   return (
-  return (
     <div className="absolute inset-0 p-2 sm:p-3 pointer-events-none select-none font-sans font-normal text-[8.5px] xs:text-[9.5px] sm:text-[10px] text-white/85 drop-shadow-[0_1px_2px_rgba(0,0,0,1)] z-10 overflow-hidden">
       
       {/* 1. TOP LEFT OVERLAY - Viewport Identifier & Patient Specs */}
