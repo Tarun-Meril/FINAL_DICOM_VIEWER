@@ -182,13 +182,17 @@ export function getCatalogSeries(studyUid: string): CatalogSeries[] {
   }));
 }
 
+import { CATALOG_REAL_SOP_UIDS } from './catalogRealSopUids';
+
 export function generateCatalogInstances(seriesUid: string, count: number = 175) {
+  const realSops = CATALOG_REAL_SOP_UIDS[seriesUid];
   const instances = [];
-  const sliceCount = Math.max(1, count);
+  const sliceCount = realSops ? realSops.length : Math.max(1, count);
   for (let i = 0; i < sliceCount; i++) {
+    const sop = realSops ? realSops[i] : `${seriesUid}.${i + 1}`;
     instances.push({
-      sop_instance_uid: `${seriesUid}.${i + 1}`,
-      sopInstanceUid: `${seriesUid}.${i + 1}`,
+      sop_instance_uid: sop,
+      sopInstanceUid: sop,
       instanceNumber: i + 1,
       instance_number: i + 1,
       image_position: [0, 0, i * 1.25],

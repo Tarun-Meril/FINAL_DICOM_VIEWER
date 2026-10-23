@@ -39,19 +39,38 @@ export class ServiceManager {
     // Cross-platform persistent clinical data directory structure
     let programDataRoot;
     if (process.platform === 'win32') {
-      if (fs.existsSync('D:\\MerilView_Data') || fs.existsSync('D:\\')) {
-        programDataRoot = 'D:\\MerilView_Data';
+      if (process.env.MERILVIEW_DATA_DIR && fs.existsSync(process.env.MERILVIEW_DATA_DIR)) {
+        programDataRoot = process.env.MERILVIEW_DATA_DIR;
       } else {
-        const baseProgramData = process.env.ProgramData || app.getPath('appData');
-        const legacyPath = path.join(baseProgramData, 'MedView PRO');
-        const newPath = path.join(baseProgramData, 'MerilView');
-        programDataRoot = newPath;
-        if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
-          try {
-            fs.renameSync(legacyPath, newPath);
-            console.log(`[ServiceManager] Migrated Windows clinical data from '${legacyPath}' to '${newPath}'`);
-          } catch {
-            programDataRoot = legacyPath;
+        let canUseD = false;
+        try {
+          if (fs.existsSync('D:\\MerilView_Data')) {
+            canUseD = true;
+          } else if (fs.existsSync('D:\\')) {
+            // Test if D: is a writable drive (not a CD-ROM / DVD / read-only partition)
+            const testDir = 'D:\\MerilView_Data_test_' + Date.now();
+            fs.mkdirSync(testDir, { recursive: true });
+            fs.rmdirSync(testDir);
+            canUseD = true;
+          }
+        } catch (_) {
+          canUseD = false;
+        }
+
+        if (canUseD) {
+          programDataRoot = 'D:\\MerilView_Data';
+        } else {
+          const baseProgramData = process.env.ProgramData || app.getPath('appData');
+          const legacyPath = path.join(baseProgramData, 'MedView PRO');
+          const newPath = path.join(baseProgramData, 'MerilView');
+          programDataRoot = newPath;
+          if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
+            try {
+              fs.renameSync(legacyPath, newPath);
+              console.log(`[ServiceManager] Migrated Windows clinical data from '${legacyPath}' to '${newPath}'`);
+            } catch {
+              programDataRoot = legacyPath;
+            }
           }
         }
       }

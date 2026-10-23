@@ -69,7 +69,7 @@ export default function ShareDialog({ study, onClose, onOpenManageShares, showTo
   const isRemoteDomain = typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const defaultCloudUrl = (import.meta.env.VITE_PUBLIC_SHARE_URL || 'https://myddicom.netlify.app');
-  const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.42.0.130:3001');
+  const defaultLanUrl = isRemoteDomain ? detectedOrigin : (import.meta.env.VITE_SHARE_BASE_URL || 'http://10.10.158.223:3001');
   const [hostMode, setHostMode] = useState<'cloud' | 'lan' | 'desktop' | 'custom'>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('merilview_share_host_mode') : null;
     if (saved === 'lan' || saved === 'desktop' || saved === 'custom') {
